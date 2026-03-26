@@ -1733,7 +1733,7 @@ class SystemService:
             [Service]
             Type=simple
             WorkingDirectory={self.paths.mt_dir}
-            ExecStart={script_path} __run_proxy
+            ExecStart=/usr/bin/python3 {script_path} __run_proxy
             Restart=on-failure
             RestartSec=2
             NoNewPrivileges=true
@@ -1751,7 +1751,7 @@ class SystemService:
 
             [Service]
             Type=oneshot
-            ExecStart={script_path} __refresh_proxy_config
+            ExecStart=/usr/bin/python3 {script_path} __refresh_proxy_config
             """
         )
         refresh_timer_body = textwrap.dedent(
@@ -1775,7 +1775,7 @@ class SystemService:
 
             [Service]
             Type=oneshot
-            ExecStart={script_path} __run_cleanup
+            ExecStart=/usr/bin/python3 {script_path} __run_cleanup
             """
         )
         cleanup_timer_body = textwrap.dedent(
