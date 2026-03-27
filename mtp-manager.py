@@ -1,12 +1,9 @@
-
 #!/usr/bin/env python3
 from __future__ import annotations
 
 import dataclasses
 import datetime as dt
-import errno
 import fcntl
-import json
 import os
 import re
 import secrets
@@ -16,11 +13,10 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Sequence
 
 APP_NAME = "MTProxy Manager"
 APP_VERSION = "6.0"
@@ -144,7 +140,7 @@ class Settings:
             ui_lang = "en"
 
         workers_raw = str(mapping.get("WORKERS", "1")).strip()
-        workers = int(workers_raw) if workers_raw.isdigit() and int(workers_raw) > 0 else 1
+        workers = int(workers_raw) if workers_raw.isdigit() and int(workers_raw) >= 0 else 1
         tls_domain = str(mapping.get("TLS_DOMAIN", "")).strip()
         if tls_domain and not DOMAIN_RE.fullmatch(tls_domain):
             tls_domain = ""
@@ -171,7 +167,7 @@ class Settings:
     def validate(self) -> None:
         validate_port(self.mt_port, "MT_PORT")
         validate_port(self.stats_port, "STATS_PORT")
-        if self.workers <= 0:
+        if self.workers < 0:
             raise ValidationError(key="workers_positive")
         if self.ui_lang not in {"ru", "en"}:
             raise ValidationError(key="ui_lang_invalid")
@@ -395,13 +391,13 @@ class I18N:
             "export_raw_secret": "  raw        : {value}",
             "export_padded_secret": "  padded     : {value}",
             "export_fake_tls": "  fake tls   : {value}",
-            "workers_positive": "WORKERS должен быть положительным целым числом",
+            "workers_positive": "WORKERS должен быть неотрицательным целым числом",
             "ui_lang_invalid": "UI_LANG должен быть 'ru' или 'en'",
             "tls_domain_invalid": "TLS_DOMAIN некорректен",
             "record_id_positive": "id записи должен быть положительным",
             "secret_invalid_user": "секрет пользователя '{user}' некорректен",
             "expected_integer": "{prompt}: ожидается целое число",
-            "whiptail_ui_requires_terminal": "Whiptail UI требует интерактивный терминал и установленный whiptail",
+            "terminal_ui_requires_terminal": "Терминальный UI требует интерактивный терминал и установленный dialog или whiptail",
             "already_running": "Уже запущен другой экземпляр {app}",
             "legacy_import_note": "Импортировано из старого файла secrets.txt",
             "duplicate_id": "Дублирующийся id {record_id}",
@@ -423,7 +419,7 @@ class I18N:
             "missing_proxy_config_file": "Отсутствует файл proxy-multi.conf: {path}",
             "secrets_file_empty": "Файл secrets пуст: {path}",
             "interactive_terminal_required": "Менеджер нужно запускать из интерактивного терминала",
-            "need_root_install_whiptail": "Запустите скрипт от root, чтобы установить whiptail",
+            "need_root_install_dialog": "Запустите скрипт от root, чтобы установить whiptail",
             "unsupported_internal_command": "Неподдерживаемая внутренняя команда: {command}",
         },
         "en": {
@@ -617,13 +613,13 @@ class I18N:
             "export_raw_secret": "  raw secret : {value}",
             "export_padded_secret": "  padded     : {value}",
             "export_fake_tls": "  fake tls   : {value}",
-            "workers_positive": "WORKERS must be a positive integer",
+            "workers_positive": "WORKERS must be a non-negative integer",
             "ui_lang_invalid": "UI_LANG must be 'ru' or 'en'",
             "tls_domain_invalid": "TLS_DOMAIN is invalid",
             "record_id_positive": "record id must be positive",
             "secret_invalid_user": "secret for user '{user}' is invalid",
             "expected_integer": "{prompt}: expected an integer",
-            "whiptail_ui_requires_terminal": "whiptail UI requires an interactive terminal with whiptail installed",
+            "terminal_ui_requires_terminal": "Terminal UI requires an interactive terminal with dialog or whiptail installed",
             "already_running": "Another instance of {app} is already running",
             "legacy_import_note": "Imported from legacy secrets.txt",
             "duplicate_id": "duplicate id {record_id}",
@@ -645,7 +641,7 @@ class I18N:
             "missing_proxy_config_file": "Missing proxy config file: {path}",
             "secrets_file_empty": "secrets file is empty: {path}",
             "interactive_terminal_required": "This manager must be started from an interactive terminal",
-            "need_root_install_whiptail": "Please run this script as root so whiptail can be installed",
+            "need_root_install_dialog": "Please run this script as root so dialog/whiptail can be installed",
             "unsupported_internal_command": "Unsupported internal command: {command}",
         },
     }
@@ -1136,10 +1132,144 @@ class WhiptailUI:
             self._show_text(APP_NAME, table)
 
 
-def build_ui(i18n: I18N) -> WhiptailUI:
-    if not WhiptailUI.is_available():
-        raise AppError(key="whiptail_ui_requires_terminal")
-    return WhiptailUI(i18n)
+class DialogUI(WhiptailUI):
+    @staticmethod
+    def is_available() -> bool:
+        return bool(shutil.which("dialog")) and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"}
+
+    def _run(self, *args: str) -> tuple[int, str]:
+        proc = subprocess.run(
+            ["dialog", "--stdout", "--colors", "--mouse", *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=None,
+        )
+        output = (proc.stdout or "").strip()
+        return proc.returncode, output
+
+    def ask(
+        self,
+        prompt: str,
+        default: str | None = None,
+        *,
+        ok_label: str | None = None,
+        cancel_label: str | None = None,
+    ) -> str | None:
+        self._flush_page()
+        height, width = self._fit_box(12, max(self.MIN_BOX_WIDTH, len(prompt) + 12), min_height=self.MIN_BOX_HEIGHT, min_width=self.MIN_BOX_WIDTH)
+        rc, out = self._run(
+            "--title",
+            APP_NAME,
+            "--ok-label",
+            ok_label or self.i18n.tr("save_action"),
+            "--cancel-label",
+            cancel_label or self.i18n.tr("back"),
+            "--inputbox",
+            prompt,
+            str(height),
+            str(width),
+            default or "",
+        )
+        if rc != 0:
+            return None
+        return out or default or ""
+
+    def text(self, title: str, text: str, *, ok_label: str | None = None) -> None:
+        self._flush_page()
+        lines = text.splitlines() or [""]
+        longest = max((len(line) for line in lines), default=0)
+        height, width = self._fit_box(len(lines) + 8, longest + 8, min_height=self.MIN_BOX_HEIGHT, min_width=self.MIN_BOX_WIDTH)
+        if len(lines) <= 10 and longest <= width - 10:
+            self._run("--title", title, "--ok-label", ok_label or self.i18n.tr("close_action"), "--msgbox", text, str(height), str(width))
+            return
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as fh:
+            fh.write(text)
+            tmp_path = fh.name
+        try:
+            self._run("--title", title, "--textbox", tmp_path, str(height), str(width))
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def confirm(
+        self,
+        prompt: str,
+        default: bool = False,
+        *,
+        yes_label: str | None = None,
+        no_label: str | None = None,
+    ) -> bool:
+        self._flush_page()
+        args = ["--title", APP_NAME]
+        if not default:
+            args.append("--defaultno")
+        height, width = self._fit_box(12, max(self.MIN_BOX_WIDTH, len(prompt) + 12), min_height=self.MIN_BOX_HEIGHT, min_width=self.MIN_BOX_WIDTH)
+        args.extend([
+            "--yes-label",
+            yes_label or self.i18n.tr("continue_action"),
+            "--no-label",
+            no_label or self.i18n.tr("back"),
+            "--yesno",
+            prompt,
+            str(height),
+            str(width),
+        ])
+        rc, _ = self._run(*args)
+        return rc == 0
+
+    def menu(
+        self,
+        title: str,
+        items: Sequence[tuple[str, str]],
+        *,
+        prompt: str | None = None,
+        panel_lines: Sequence[str] | None = None,
+        ok_label: str | None = None,
+        cancel_label: str | None = None,
+    ) -> str | None:
+        self._flush_page()
+        mapping: dict[str, str] = {}
+        payload: list[str] = []
+        panel_text = "\n".join(panel_lines or []).strip()
+        prompt_text = panel_text if panel_text else (prompt or self.i18n.tr("choose"))
+        desired_width = max(
+            self.MIN_MENU_WIDTH,
+            max((len(label) for _, label in items), default=0) + 18,
+            max((len(line) for line in prompt_text.splitlines()), default=0) + 8,
+        )
+        desired_height = max(self.MIN_MENU_HEIGHT, len(prompt_text.splitlines()) + len(items) + 10)
+        height, width = self._fit_box(desired_height, desired_width, min_height=self.MIN_MENU_HEIGHT, min_width=self.MIN_MENU_WIDTH)
+        list_height = min(max(self.MIN_MENU_LIST_HEIGHT, len(items) + 1), max(self.MIN_MENU_LIST_HEIGHT, height - len(prompt_text.splitlines()) - 9))
+        for index, (key, label) in enumerate(items, start=1):
+            tag = str(index)
+            mapping[tag] = key
+            payload.extend([tag, self._short_menu_label(label, width)])
+        rc, out = self._run(
+            "--title",
+            title,
+            "--ok-label",
+            ok_label or self.i18n.tr("select"),
+            "--cancel-label",
+            cancel_label or self.i18n.tr("back"),
+            "--menu",
+            prompt_text,
+            str(height),
+            str(width),
+            str(list_height),
+            *payload,
+        )
+        if rc != 0:
+            return None
+        return mapping.get(out)
+
+
+def build_ui(i18n: I18N) -> PlainConsole | WhiptailUI | DialogUI:
+    if DialogUI.is_available():
+        return DialogUI(i18n)
+    if WhiptailUI.is_available():
+        return WhiptailUI(i18n)
+    if sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"}:
+        return PlainConsole(i18n)
+    raise AppError(key="terminal_ui_requires_terminal")
 
 
 class FileLock:
@@ -1547,16 +1677,15 @@ class SystemService:
         subprocess.run(["apt-get", "install", "-y", *packages], check=True, env=env)
 
     def install_dependencies(self) -> None:
-        self.apt_install("curl", "git", "build-essential", "libssl-dev", "zlib1g-dev", "ca-certificates", "ufw", "locales", "whiptail")
+        self.apt_install("curl", "git", "build-essential", "libssl-dev", "zlib1g-dev", "ca-certificates", "ufw", "locales", "dialog", "whiptail")
 
     def fix_locale(self) -> None:
-        locale_gen = Path("/etc/locale.gen")
-        if locale_gen.exists():
-            text = locale_gen.read_text(encoding="utf-8")
-            updated = re.sub(r"^#\s*en_US\.UTF-8 UTF-8", "en_US.UTF-8 UTF-8", text, flags=re.M)
-            if updated != text:
-                self.storage.atomic_write_text(locale_gen, updated, 0o644)
-        for cmd in (("locale-gen",), ("update-locale", "LANG=en_US.UTF-8", "LC_CTYPE=en_US.UTF-8")):
+        locale_defaults = "LANG=C.UTF-8\nLC_CTYPE=C.UTF-8\n"
+        try:
+            self.storage.atomic_write_text(Path("/etc/default/locale"), locale_defaults, 0o644)
+        except Exception:
+            pass
+        for cmd in (("update-locale", "LANG=C.UTF-8", "LC_CTYPE=C.UTF-8"),):
             try:
                 self.shell.check_call(*cmd)
             except Exception:
@@ -2004,20 +2133,48 @@ class LinkExporter:
             variants.append(("fake", self.i18n.tr("key_variant_fake")))
         return variants
 
+    @staticmethod
+    def _detect_public_ip() -> str:
+        try:
+            with urllib.request.urlopen(IP_DISCOVERY_URL, timeout=8) as response:
+                return response.read().decode("utf-8").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _tg_link(host: str, port: int, secret: str) -> str:
+        return f"tg://proxy?server={host}&port={port}&secret={secret}"
+
+    @staticmethod
+    def _tme_link(host: str, port: int, secret: str) -> str:
+        return f"https://t.me/proxy?server={host}&port={port}&secret={secret}"
+
     def export_lines(self, settings: Settings, records: Sequence[SecretRecord], user: str | None = None, variant: str = "all") -> list[str]:
         selected = [record for record in records if record.enabled and (user is None or record.user == user)]
+        host = self._detect_public_ip() or "<public-ip>"
+        port = settings.mt_port
         lines: list[str] = []
         for record in selected:
             lines.append(self.i18n.tr("export_header", user=record.user, record_id=record.id, note=record.note or "-"))
+            lines.append(f"  endpoint   : {host}:{port}")
+            lines.append(f"  server     : {host}")
+            lines.append(f"  port       : {port}")
             normal = record.secret
             padded = self.padded_secret(record.secret)
             if variant in {"all", "raw"}:
                 lines.append(self.i18n.tr("export_raw_secret", value=normal))
+                lines.append(f"  tg raw     : {self._tg_link(host, port, normal)}")
+                lines.append(f"  t.me raw   : {self._tme_link(host, port, normal)}")
             if variant in {"all", "padded"}:
                 lines.append(self.i18n.tr("export_padded_secret", value=padded))
+                lines.append(f"  tg padded  : {self._tg_link(host, port, padded)}")
+                lines.append(f"  t.me padded: {self._tme_link(host, port, padded)}")
             if settings.tls_domain and variant in {"all", "fake"}:
                 fake = self.fake_tls_secret(record.secret, settings.tls_domain)
                 lines.append(self.i18n.tr("export_fake_tls", value=fake))
+                lines.append(f"  fake host  : {settings.tls_domain}")
+                lines.append(f"  tg fake    : {self._tg_link(host, port, fake)}")
+                lines.append(f"  t.me fake  : {self._tme_link(host, port, fake)}")
             lines.append("")
         return lines
 
@@ -2927,7 +3084,9 @@ def run_proxy(paths: Paths) -> int:
         secret = raw_line.strip()
         if secret:
             args.extend(["-S", secret])
-    args.extend(["--aes-pwd", str(paths.proxy_secret_file), str(paths.proxy_config_file), "-M", str(settings.workers)])
+    args.extend(["--aes-pwd", str(paths.proxy_secret_file), str(paths.proxy_config_file)])
+    if settings.workers > 0 and not settings.tls_domain:
+        args.extend(["-M", str(settings.workers)])
     if settings.tls_domain:
         args.extend(["--domain", settings.tls_domain])
     if settings.ad_tag:
@@ -2936,17 +3095,17 @@ def run_proxy(paths: Paths) -> int:
     return 0
 
 
-def ensure_whiptail_ready() -> None:
+def ensure_terminal_ui_ready() -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty() or os.environ.get("TERM", "") in {"", "dumb"}:
         raise AppError(key="interactive_terminal_required")
-    if shutil.which("whiptail"):
+    if shutil.which("dialog") or shutil.which("whiptail"):
         return
     if os.geteuid() != 0:
-        raise AppError(key="need_root_install_whiptail")
+        raise AppError(key="need_root_install_dialog")
     env = os.environ.copy()
     env["DEBIAN_FRONTEND"] = "noninteractive"
     subprocess.run(["apt-get", "update"], check=True, env=env)
-    subprocess.run(["apt-get", "install", "-y", "whiptail"], check=True, env=env)
+    subprocess.run(["apt-get", "install", "-y", "dialog", "whiptail"], check=True, env=env)
 
 
 def run_internal(command: str, paths: Paths) -> int:
@@ -2966,7 +3125,9 @@ def run_internal(command: str, paths: Paths) -> int:
 
 
 def show_startup_error(message: str, i18n: I18N) -> None:
-    if shutil.which("whiptail") and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"}:
+    if shutil.which("dialog") and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"}:
+        subprocess.run(["dialog", "--stdout", "--colors", "--mouse", "--title", f"{i18n.tr('error')} {APP_NAME}", "--msgbox", message, "18", "94"], check=False)
+    elif shutil.which("whiptail") and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"}:
         subprocess.run(["whiptail", "--title", f"{i18n.tr('error')} {APP_NAME}", "--msgbox", message, "18", "94"], check=False)
     else:
         print(f"{i18n.tr('error')}: {message}", file=sys.stderr)
@@ -2978,7 +3139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if argv and argv[0].startswith("__"):
         return run_internal(argv[0], paths)
 
-    ensure_whiptail_ready()
+    ensure_terminal_ui_ready()
     with FileLock(paths.lock_file):
         app = App(paths)
         app.system.require_root()
