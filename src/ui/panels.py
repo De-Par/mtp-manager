@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from controller import DashboardViewModel
 from models.health import HealthReport
-from models.secret import UserRecord
 from models.settings import AppSettings
 
 
@@ -20,27 +19,6 @@ def render_dashboard_panel(model: DashboardViewModel) -> str:
             f"Secrets: {model.secrets_count}",
         ]
     )
-
-
-def render_users_panel(users: list[UserRecord], selected_user: str | None, selected_secret_id: int | None) -> str:
-    if not users:
-        return "No users yet"
-    lines: list[str] = []
-    for user in users:
-        marker = ">" if user.name == selected_user else " "
-        enabled = "on" if user.enabled else "off"
-        lines.append(f"{marker} {user.name} [{enabled}] secrets={len(user.secrets)}")
-        for secret in user.secrets:
-            secret_marker = "*" if user.name == selected_user and secret.id == selected_secret_id else "-"
-            state = "on" if secret.enabled else "off"
-            lines.append(f"    {secret_marker} #{secret.id} [{state}] {secret.raw_secret[:8]}... note={secret.note or '-'}")
-    if selected_user:
-        lines.append("")
-        lines.append(f"Selected user: {selected_user}")
-        lines.append(f"Selected secret: {selected_secret_id if selected_secret_id is not None else 'none'}")
-    return "\n".join(lines)
-
-
 def render_settings_panel(settings: AppSettings) -> str:
     return "\n".join(
         [

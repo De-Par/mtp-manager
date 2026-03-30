@@ -56,7 +56,7 @@ class InstallService:
         self.source.build()
         self.network.download(PROXY_SECRET_URL, self.runtime.paths.proxy_secret_file)
         self.network.download(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)
-        self.systemd.write_units("/usr/bin/python3", script_path)
+        self.systemd.write_units(script_path)
         enabled_count = self.runtime.reconcile(settings, self.systemd, restart=False)
         if options.configure_firewall:
             self.ufw.allow_tcp(22)
@@ -73,7 +73,7 @@ class InstallService:
         self.runtime.reconcile(settings, self.systemd, restart=True)
 
     def reinstall_units(self, script_path: Path) -> None:
-        self.systemd.write_units("/usr/bin/python3", script_path)
+        self.systemd.write_units(script_path)
 
     def refresh_proxy_config(self) -> bool:
         changed = self.network.refresh_if_changed(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)

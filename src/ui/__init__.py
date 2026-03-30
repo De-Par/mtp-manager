@@ -1,9 +1,4 @@
 from .backend import UIBackend
-from .console_app import ConsoleApp
+from .prompt_app import PromptToolkitApp
 
-try:
-    from .prompt_app import PromptToolkitApp
-except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency
-    PromptToolkitApp = None  # type: ignore[assignment]
-
-__all__ = ["ConsoleApp", "PromptToolkitApp", "UIBackend"]
+__all__ = ["PromptToolkitApp", "UIBackend"]

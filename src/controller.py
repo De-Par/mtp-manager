@@ -52,7 +52,7 @@ class AppController:
 
     @property
     def script_path(self) -> Path:
-        return self.paths.root / "mtp-manager.py"
+        return self.paths.self_install_path
 
     def load_settings(self) -> AppSettings:
         return self.settings_service.load()

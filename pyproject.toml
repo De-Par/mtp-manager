@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mtproxy-manager"
+name = "mtp-manager"
 version = "0.1.0"
-description = "Modular MTProxy lifecycle manager for Debian and Ubuntu VPS"
+description = "MTProxy lifecycle manager for Debian and Ubuntu VPS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [project.scripts]
-mtproxy-manager = "app:main"
+mtp-manager = "app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

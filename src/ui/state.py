@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class UIState:
     current_screen: str = "dashboard"
     status_message: str = ""
-    busy: bool = False
     selected_user: str | None = None
     selected_secret_id: int | None = None
+    output_title: str = "Activity"
+    output_body: str = ""

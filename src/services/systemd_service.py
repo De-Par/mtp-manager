@@ -16,7 +16,7 @@ class SystemdService:
         self.storage = storage
         self.paths = paths
 
-    def render_main_unit(self, python_bin: str, script_path: Path) -> str:
+    def render_main_unit(self, script_path: Path) -> str:
         return textwrap.dedent(
             f"""\
             [Unit]
@@ -27,7 +27,7 @@ class SystemdService:
             [Service]
             Type=simple
             WorkingDirectory={self.paths.mt_dir}
-            ExecStart={python_bin} {script_path} internal run-proxy
+            ExecStart={script_path} internal run-proxy
             Restart=on-failure
             RestartSec=2
             NoNewPrivileges=true
@@ -39,7 +39,7 @@ class SystemdService:
             """
         )
 
-    def render_refresh_service(self, python_bin: str, script_path: Path) -> str:
+    def render_refresh_service(self, script_path: Path) -> str:
         return textwrap.dedent(
             f"""\
             [Unit]
@@ -47,7 +47,7 @@ class SystemdService:
 
             [Service]
             Type=oneshot
-            ExecStart={python_bin} {script_path} internal refresh-proxy-config
+            ExecStart={script_path} internal refresh-proxy-config
             """
         )
 
@@ -67,15 +67,15 @@ class SystemdService:
             """
         )
 
-    def render_cleanup_service(self, python_bin: str, script_path: Path) -> str:
+    def render_cleanup_service(self, script_path: Path) -> str:
         return textwrap.dedent(
             f"""\
             [Unit]
-            Description=Daily cleanup for MTProxy Manager artifacts
+            Description=Daily cleanup for mtp-manager artifacts
 
             [Service]
             Type=oneshot
-            ExecStart={python_bin} {script_path} internal run-cleanup
+            ExecStart={script_path} internal run-cleanup
             """
         )
 
@@ -83,7 +83,7 @@ class SystemdService:
         return textwrap.dedent(
             """\
             [Unit]
-            Description=Daily cleanup timer for MTProxy Manager
+            Description=Daily cleanup timer for mtp-manager
 
             [Timer]
             OnBootSec=15m
@@ -95,11 +95,11 @@ class SystemdService:
             """
         )
 
-    def write_units(self, python_bin: str, script_path: Path, *, enable_timers: bool = True) -> None:
-        self.storage.save_text(self.paths.service_file, self.render_main_unit(python_bin, script_path))
-        self.storage.save_text(self.paths.refresh_service_file, self.render_refresh_service(python_bin, script_path))
+    def write_units(self, script_path: Path, *, enable_timers: bool = True) -> None:
+        self.storage.save_text(self.paths.service_file, self.render_main_unit(script_path))
+        self.storage.save_text(self.paths.refresh_service_file, self.render_refresh_service(script_path))
         self.storage.save_text(self.paths.refresh_timer_file, self.render_refresh_timer())
-        self.storage.save_text(self.paths.cleanup_service_file, self.render_cleanup_service(python_bin, script_path))
+        self.storage.save_text(self.paths.cleanup_service_file, self.render_cleanup_service(script_path))
         self.storage.save_text(self.paths.cleanup_timer_file, self.render_cleanup_timer())
         self.systemd.daemon_reload()
         if enable_timers:

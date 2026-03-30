@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-_setup_script_path() {
+setup_script_path() {
   if [ -n "${ZSH_VERSION:-}" ]; then
     printf '%s\n' "${(%):-%x}"
     return
@@ -14,11 +14,11 @@ _setup_script_path() {
 
 if ! (return 0 2>/dev/null); then
   printf '[setup] error: run this script via source, not as an executable\n' >&2
-  printf '[setup]   source "%s"\n' "$(_setup_script_path)" >&2
+  printf '[setup]   source "%s"\n' "$(setup_script_path)" >&2
   exit 1
 fi
 
-ROOT_DIR="$(cd "$(dirname "$(_setup_script_path)")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$(setup_script_path)")" && pwd)"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-auto}"
@@ -36,7 +36,7 @@ die() {
   return 1
 }
 
-have_cmd() {
+has_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
@@ -45,14 +45,14 @@ run_privileged() {
     "$@"
     return
   fi
-  if have_cmd sudo; then
+  if has_command sudo; then
     sudo "$@"
     return
   fi
   die "sudo is required to install system packages"
 }
 
-clean_artifacts() {
+cleanup_project_artifacts() {
   log "Removing build and cache artifacts"
   find "$ROOT_DIR" \
     \( -path "$ROOT_DIR/.git" -o -path "$VENV_DIR" \) -prune -o \
@@ -65,7 +65,7 @@ install_system_deps() {
     log "Skipping system packages by request"
     return
   fi
-  if ! have_cmd apt-get; then
+  if ! has_command apt-get; then
     warn "apt-get not found; skipping system package installation"
     return
   fi
@@ -97,14 +97,14 @@ install_system_deps() {
 }
 
 ensure_python() {
-  have_cmd "$PYTHON_BIN" || die "Python interpreter not found: $PYTHON_BIN"
+  has_command "$PYTHON_BIN" || die "Python interpreter not found: $PYTHON_BIN"
   "$PYTHON_BIN" - <<'PY'
 import sys
 raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
 PY
 }
 
-create_venv() {
+ensure_venv() {
   if [ ! -d "$VENV_DIR" ]; then
     log "Creating virtual environment at $VENV_DIR"
     "$PYTHON_BIN" -m venv "$VENV_DIR"
@@ -113,16 +113,16 @@ create_venv() {
   fi
 }
 
-install_python_deps() {
+install_project() {
   log "Upgrading packaging tools"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
   log "Installing project in editable mode"
-  "$VENV_DIR/bin/python" -m pip install -e "$ROOT_DIR"
+  "$VENV_DIR/bin/python" -m pip install -e "$ROOT_DIR" --no-build-isolation
 }
 
-run_smoke_check() {
-  log "Running smoke check"
-  MTPROXY_MANAGER_STATE_ROOT="$ROOT_DIR/.devstate" "$VENV_DIR/bin/python" "$ROOT_DIR/mtp-manager.py" --console --dry-run >/dev/null
+verify_installation() {
+  log "Verifying installed entrypoint"
+  "$VENV_DIR/bin/python" -c "from bootstrap import build_container; build_container()" >/dev/null
 }
 
 activate_venv() {
@@ -135,31 +135,31 @@ activate_venv() {
   log "Virtual environment is active: $VENV_DIR"
 }
 
-print_source_hint() {
+print_next_steps() {
   cat <<EOF
 
 [setup] Done.
 [setup] Virtual environment has been activated in the current shell.
 [setup] Quick run:
-[setup]   python "$ROOT_DIR/mtp-manager.py" --console --dry-run
+[setup]   mtp-manager
 EOF
 }
 
 setup_pipeline() {
   set -euo pipefail
   cd "$ROOT_DIR"
-  clean_artifacts
+  cleanup_project_artifacts
   install_system_deps
   ensure_python
-  create_venv
-  install_python_deps
-  run_smoke_check
+  ensure_venv
+  install_project
+  verify_installation
 }
 
 main() {
   (set -euo pipefail; setup_pipeline "$@")
   activate_venv
-  print_source_hint
+  print_next_steps
 }
 
 main "$@"

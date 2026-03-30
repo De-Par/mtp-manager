@@ -1,5 +1,5 @@
 CATALOG = {
-    "app_title": "MTProxy Manager",
+    "app_title": "mtp-manager",
     "dashboard": "Панель",
     "setup_updates": "Установка и обновления",
     "users_secrets": "Пользователи и секреты",

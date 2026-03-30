@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from controller import AppController
 from i18n import Translator
@@ -19,15 +18,13 @@ from services import (
     SourceService,
     SystemdService,
 )
-
-if TYPE_CHECKING:
-    from ui.backend import UIBackend
+from ui.prompt_app import PromptToolkitApp
 
 
 @dataclass(slots=True)
 class AppContainer:
     controller: AppController
-    ui: UIBackend
+    ui: PromptToolkitApp
     paths: ProjectPaths
     cleanup_service: CleanupService
     install_service: InstallService
@@ -38,9 +35,9 @@ class AppContainer:
     systemd_service: SystemdService
 
 
-def build_container(*, dry_run: bool = False, use_console: bool = False) -> AppContainer:
+def build_container() -> AppContainer:
     paths = default_paths()
-    shell = ShellRunner(dry_run=dry_run)
+    shell = ShellRunner()
     storage = JsonStorage()
     inventory_service = InventoryService(storage, paths)
     systemd_manager = SystemdManager(shell)
@@ -75,19 +72,7 @@ def build_container(*, dry_run: bool = False, use_console: bool = False) -> AppC
         systemd_service=systemd_service,
         paths=paths,
     )
-    if use_console:
-        from ui.console_app import ConsoleApp
-
-        ui = ConsoleApp()
-    else:
-        try:
-            from ui.prompt_app import PromptToolkitApp
-        except ModuleNotFoundError:
-            from ui.console_app import ConsoleApp
-
-            ui = ConsoleApp()
-        else:
-            ui = PromptToolkitApp()
+    ui = PromptToolkitApp()
     return AppContainer(
         controller=controller,
         ui=ui,

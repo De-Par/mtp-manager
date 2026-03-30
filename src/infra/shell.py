@@ -17,9 +17,6 @@ class CommandResult:
 
 
 class ShellRunner:
-    def __init__(self, *, dry_run: bool = False) -> None:
-        self.dry_run = dry_run
-
     def run(
         self,
         args: Sequence[str],
@@ -27,8 +24,6 @@ class ShellRunner:
         cwd: Path | None = None,
         check: bool = True,
     ) -> CommandResult:
-        if self.dry_run:
-            return CommandResult(list(args), 0, "", "")
         completed = subprocess.run(
             list(args),
             cwd=str(cwd) if cwd else None,

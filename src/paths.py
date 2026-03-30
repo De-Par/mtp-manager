@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import shutil
+import sys
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectPaths:
     root: Path
-    self_install_path: Path = Path("/usr/local/bin/mtproxy-manager.py")
+    self_install_path: Path = Path("/usr/local/bin/mtp-manager")
     mt_dir: Path = Path("/opt/MTProxy")
     conf_dir: Path = Path("/etc/mtproxy-manager")
     data_dir: Path = Path("/var/lib/mtproxy-manager")
@@ -67,14 +69,29 @@ class ProjectPaths:
 
 def default_paths(root: Path | None = None) -> ProjectPaths:
     project_root = (root or Path.cwd()).resolve()
+    argv0 = sys.argv[0] if sys.argv else ""
+    if argv0 and not argv0.startswith("-"):
+        resolved_entrypoint = Path(argv0).resolve()
+    else:
+        resolved_entrypoint = None
+    if resolved_entrypoint is None or not resolved_entrypoint.exists():
+        venv_entrypoint = Path(sys.prefix).resolve() / "bin" / "mtp-manager"
+        if venv_entrypoint.exists():
+            resolved_entrypoint = venv_entrypoint
+        else:
+            resolved_entrypoint = None
+    if resolved_entrypoint is None or not resolved_entrypoint.exists():
+        which_entrypoint = shutil.which("mtp-manager")
+        resolved_entrypoint = Path(which_entrypoint).resolve() if which_entrypoint else Path("/usr/local/bin/mtp-manager")
+    self_install_path = resolved_entrypoint
     state_root_raw = os.environ.get("MTPROXY_MANAGER_STATE_ROOT", "").strip()
     if not state_root_raw:
-        return ProjectPaths(root=project_root)
+        return ProjectPaths(root=project_root, self_install_path=self_install_path)
 
     state_root = Path(state_root_raw).resolve()
     return ProjectPaths(
         root=project_root,
-        self_install_path=state_root / "bin" / "mtproxy-manager.py",
+        self_install_path=self_install_path,
         mt_dir=state_root / "opt" / "MTProxy",
         conf_dir=state_root / "etc" / "mtproxy-manager",
         data_dir=state_root / "var" / "lib" / "mtproxy-manager",
