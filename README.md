@@ -1,4 +1,4 @@
-# MTProxy Manager
+# MTProto Manager
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-E95420?logo=ubuntu&logoColor=white)
