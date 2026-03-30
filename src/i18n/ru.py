@@ -1,0 +1,16 @@
+CATALOG = {
+    "app_title": "MTProxy Manager",
+    "dashboard": "Панель",
+    "setup_updates": "Установка и обновления",
+    "users_secrets": "Пользователи и секреты",
+    "service": "Сервис",
+    "reports": "Статус и отчёты",
+    "maintenance": "Обслуживание",
+    "danger_zone": "Опасная зона",
+    "language": "Язык",
+    "service_status": "Статус сервиса",
+    "public_ip": "Публичный IP",
+    "fake_tls": "Fake TLS",
+    "users_count": "Пользователи",
+    "secrets_count": "Секреты",
+}

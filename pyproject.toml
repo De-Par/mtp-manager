@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mtproxy-manager"
+version = "0.1.0"
+description = "Modular MTProxy lifecycle manager for Debian and Ubuntu VPS"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "prompt_toolkit>=3.0.43,<4",
+]
+keywords = ["mtproxy", "mtproto", "telegram", "systemd", "tui"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: POSIX :: Linux",
+  "Environment :: Console",
+  "Topic :: System :: Systems Administration",
+]
+
+[project.scripts]
+mtproxy-manager = "app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["app", "bootstrap", "controller", "errors", "paths"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
