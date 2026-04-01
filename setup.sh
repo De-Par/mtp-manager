@@ -135,16 +135,6 @@ activate_venv() {
   log "Virtual environment is active: $VENV_DIR"
 }
 
-print_next_steps() {
-  cat <<EOF
-
-[setup] Done.
-[setup] Virtual environment has been activated in the current shell.
-[setup] Quick run:
-[setup]   mtp-manager
-EOF
-}
-
 setup_pipeline() {
   set -euo pipefail
   cd "$ROOT_DIR"
@@ -159,7 +149,6 @@ setup_pipeline() {
 main() {
   (set -euo pipefail; setup_pipeline "$@")
   activate_venv
-  print_next_steps
 }
 
 main "$@"
