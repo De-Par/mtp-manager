@@ -31,6 +31,7 @@ class CleanupService:
         for unit in ("mtproxy.service", self.paths.refresh_timer_file.name, self.paths.cleanup_timer_file.name):
             self.systemd.disable(unit)
         for target in (
+            self.paths.lock_file,
             self.paths.service_file,
             self.paths.refresh_service_file,
             self.paths.refresh_timer_file,
@@ -50,6 +51,13 @@ class CleanupService:
                 shutil.rmtree(directory)
         if self.paths.mt_dir.exists():
             shutil.rmtree(self.paths.mt_dir)
+        install_path = self.paths.self_install_path
+        if (
+            install_path.exists()
+            and install_path.name == "mtp-manager"
+            and install_path.parent in {Path("/usr/local/bin"), Path("/usr/bin")}
+        ):
+            install_path.unlink()
         if remove_swap and managed_swap_present:
             self.systemd.shell.run(["swapoff", str(self.paths.swap_file)], check=False)
             if self.paths.fstab_file.exists():

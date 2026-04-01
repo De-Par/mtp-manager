@@ -96,6 +96,11 @@ class AppController:
         report = self.diagnostics_service.build_report(settings)
         service_status = next((check.value for check in report.checks if check.key == "service_status"), "unknown")
         public_ip = next((check.value for check in report.checks if check.key == "public_ip"), "unknown")
+        enabled_secrets = self.runtime_service.enabled_secret_count()
+        if enabled_secrets == 0:
+            service_status = "no-secrets"
+        elif not self.runtime_service.runtime_prerequisites_ready():
+            service_status = "not-ready"
         return DashboardViewModel(
             service_status=service_status,
             public_ip=public_ip,
@@ -133,7 +138,7 @@ class AppController:
     def selected_detail_text(self, user_name: str | None, secret_id: int | None) -> str:
         user = self.get_user(user_name)
         if user is None:
-            return "No user selected"
+            return "No user selected."
         lines = [
             f"User: {user.name}",
             f"User enabled: {'on' if user.enabled else 'off'}",
@@ -153,6 +158,24 @@ class AppController:
                 f"Note: {secret.note or '-'}",
             ]
         )
+        settings = self.load_settings()
+        report = self.diagnostics_service.build_report(settings)
+        host = next((check.value for check in report.checks if check.key == "public_ip"), "") or "<public-ip>"
+        bundle = self.export_service.build_bundle(host, settings, user, secret)
+        lines.extend(
+            [
+                "",
+                "Links",
+                f"DD: {bundle.links.padded_secret}",
+                f"EE: {bundle.links.fake_tls_secret or 'disabled'}",
+                f"tg raw: {bundle.links.tg_raw}",
+                f"t.me raw: {bundle.links.tme_raw}",
+                f"tg dd: {bundle.links.tg_padded}",
+                f"t.me dd: {bundle.links.tme_padded}",
+                f"tg ee: {bundle.links.tg_fake_tls or 'disabled'}",
+                f"t.me ee: {bundle.links.tme_fake_tls or 'disabled'}",
+            ]
+        )
         return "\n".join(lines)
 
     def add_user(self, user_name: str) -> UserRecord:
@@ -166,33 +189,34 @@ class AppController:
     def set_user_enabled(self, user_name: str, enabled: bool) -> str:
         changed = self.inventory_service.set_user_enabled(user_name, enabled)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return f"Updated user {user_name}, affected secrets: {changed}"
+        state = "enabled" if enabled else "disabled"
+        return f"User {user_name} {state}; affected secrets: {changed}."
 
     def rotate_user(self, user_name: str, *, only_enabled: bool = True) -> str:
         changed = self.inventory_service.rotate_user(user_name, only_enabled=only_enabled)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return f"Rotated secrets for {user_name}: {changed}"
+        return f"Secrets refreshed for {user_name}; rotated: {changed}."
 
     def delete_user(self, user_name: str) -> str:
         removed = self.inventory_service.delete_user(user_name)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return f"Deleted user {user_name}, removed secrets: {removed}"
+        return f"User {user_name} deleted; removed secrets: {removed}."
 
     def set_secret_enabled(self, secret_id: int, enabled: bool) -> str:
         self.inventory_service.set_secret_enabled(secret_id, enabled)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
         state = "enabled" if enabled else "disabled"
-        return f"Secret {secret_id} {state}"
+        return f"Secret #{secret_id} {state}."
 
     def rotate_secret(self, secret_id: int) -> str:
         rotated = self.inventory_service.rotate_secret(secret_id)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return f"Rotated secret {rotated.id}"
+        return f"Secret #{rotated.id} refreshed."
 
     def delete_secret(self, secret_id: int) -> str:
         self.inventory_service.delete_secret(secret_id)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return f"Deleted secret {secret_id}"
+        return f"Secret #{secret_id} deleted."
 
     def selected_user_secret_ids(self, user_name: str | None) -> list[int]:
         if not user_name:
@@ -256,51 +280,65 @@ class AppController:
         return names[(index - 1) % len(names)]
 
     def run_setup(self, *, source_mode: str = "fresh") -> str:
+        settings = self.load_settings()
+        if self.systemd_service.is_installed():
+            self.install_service.update_source(settings, self.script_path, source_mode="update")
+            return "Setup refreshed the existing installation."
+
         from services.install_service import SetupOptions
 
-        self.install_service.initial_setup(self.load_settings(), self.script_path, SetupOptions(source_mode=source_mode))
-        return f"Initial setup completed with source mode: {source_mode}"
+        self.install_service.initial_setup(settings, self.script_path, SetupOptions(source_mode=source_mode))
+        return "Setup completed."
 
     def run_update(self, *, source_mode: str = "update") -> str:
         self.install_service.update_source(self.load_settings(), self.script_path, source_mode=source_mode)
-        return f"Source update completed with mode: {source_mode}"
+        return "Source updated."
 
     def run_rebuild(self) -> str:
         self.install_service.rebuild_source(self.load_settings())
-        return "Source rebuild completed"
+        return "Rebuild completed."
 
     def run_reinstall_units(self) -> str:
         self.install_service.reinstall_units(self.script_path)
         return "Systemd units rewritten"
 
+    def run_apply_changes(self) -> str:
+        changed = self.install_service.refresh_proxy_config()
+        enabled = self.install_service.refresh_runtime(self.load_settings())
+        if changed:
+            return f"Changes applied. Config refreshed; enabled secrets: {enabled}."
+        return f"Changes applied. Runtime refreshed; enabled secrets: {enabled}."
+
     def run_refresh_proxy_config(self) -> str:
         changed = self.install_service.refresh_proxy_config()
-        return "Proxy config updated" if changed else "Proxy config unchanged"
+        return "Config refreshed." if changed else "Config is already up to date."
 
     def run_refresh_runtime(self) -> str:
         enabled = self.install_service.refresh_runtime(self.load_settings())
-        return f"Runtime reconciled, enabled secrets: {enabled}"
+        return f"Runtime refreshed; enabled secrets: {enabled}."
 
     def service_start(self) -> str:
+        self._ensure_service_can_run()
         self.systemd_service.start()
-        return "Service started"
+        return "Service started."
 
     def service_stop(self) -> str:
         self.systemd_service.stop()
-        return "Service stopped"
+        return "Service stopped."
 
     def service_restart(self) -> str:
+        self._ensure_service_can_run()
         self.systemd_service.restart()
-        return "Service restarted"
+        return "Service restarted."
 
     def service_status_text(self) -> str:
-        return self.systemd_service.status().strip() or "No status output"
+        return self.systemd_service.status().strip() or "No status available."
 
     def service_logs_text(self) -> str:
-        return self.systemd_service.logs().strip() or "No logs output"
+        return self.systemd_service.logs().strip() or "No logs available."
 
     def service_unit_preview(self) -> str:
-        return self.systemd_service.preview().strip() or "No unit preview available"
+        return self.systemd_service.preview().strip() or "No unit preview available."
 
     def cleanup_runtime(self) -> str:
         self.cleanup_service.cleanup_runtime()
@@ -313,10 +351,21 @@ class AppController:
 
     def factory_reset(self, *, remove_swap: bool = False) -> str:
         self.cleanup_service.factory_reset(remove_swap=remove_swap)
-        return "Factory reset completed"
+        return "Factory reset completed. Managed MTProxy services and files were removed."
 
     def set_language(self, lang: str) -> AppSettings:
         return self.update_settings(ui_lang=lang)
+
+    def _ensure_service_can_run(self) -> None:
+        settings = self.load_settings()
+        self.runtime_service.rebuild_secrets_file()
+        enabled_secrets = self.runtime_service.enabled_secret_count()
+        if enabled_secrets == 0:
+            raise AppError("Enable at least one secret before starting the service.")
+        if not self.runtime_service.runtime_prerequisites_ready():
+            raise AppError("Run Setup or Apply Changes before starting the service.")
+        exec_args = self.runtime_service.build_exec_args(settings)
+        self.runtime_service.write_runtime_snapshot(settings, exec_args)
 
     def export_for_user(self, user_name: str) -> list[ExportBundle]:
         settings = self.load_settings()
@@ -332,17 +381,17 @@ class AppController:
 
     def export_text_for_user(self, user_name: str | None) -> str:
         if not user_name:
-            return "No user selected"
+            return "No user selected."
         bundles = self.export_for_user(user_name)
         if not bundles:
-            return "No exportable secrets"
+            return "No exportable secrets available."
         return self.export_service.render_bundles(bundles)
 
     def export_selected_user_to_file(self, user_name: str | None) -> str:
         if not user_name:
-            return "No user selected"
+            return "No user selected."
         bundles = self.export_for_user(user_name)
         if not bundles:
-            return "No exportable secrets"
+            return "No exportable secrets available."
         path = self.export_service.export_bundles_to_file(bundles, self.paths.export_file)
-        return f"Exported to {path}"
+        return f"Export saved to {path}."

@@ -1,4 +1,4 @@
 from .backend import UIBackend
-from .prompt_app import PromptToolkitApp
+from .textual_app import TextualUI
 
-__all__ = ["PromptToolkitApp", "UIBackend"]
+__all__ = ["TextualUI", "UIBackend"]

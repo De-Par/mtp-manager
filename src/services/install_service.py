@@ -44,6 +44,10 @@ class InstallService:
         self.systemd = systemd
         self.ufw = ufw
 
+    def ensure_proxy_assets(self) -> None:
+        self.network.download(PROXY_SECRET_URL, self.runtime.paths.proxy_secret_file)
+        self.network.download(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)
+
     def initial_setup(self, settings: AppSettings, script_path: Path, options: SetupOptions) -> None:
         if os.geteuid() != 0:
             raise PlatformError("this action requires root")
@@ -54,8 +58,7 @@ class InstallService:
             self.shell.run(["apt-get", "install", "-y", "curl", "git", "build-essential", "libssl-dev", "zlib1g-dev", "ca-certificates", "ufw"])
         self.source.clone_or_update(options.source_mode)
         self.source.build()
-        self.network.download(PROXY_SECRET_URL, self.runtime.paths.proxy_secret_file)
-        self.network.download(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)
+        self.ensure_proxy_assets()
         self.systemd.write_units(script_path)
         enabled_count = self.runtime.reconcile(settings, self.systemd, restart=False)
         if options.configure_firewall:
@@ -70,6 +73,7 @@ class InstallService:
     def rebuild_source(self, settings: AppSettings) -> None:
         self.source.clone_or_update("rebuild")
         self.source.build()
+        self.ensure_proxy_assets()
         self.runtime.reconcile(settings, self.systemd, restart=True)
 
     def reinstall_units(self, script_path: Path) -> None:
@@ -82,4 +86,5 @@ class InstallService:
         return changed
 
     def refresh_runtime(self, settings: AppSettings) -> int:
+        self.ensure_proxy_assets()
         return self.runtime.reconcile(settings, self.systemd, restart=True)

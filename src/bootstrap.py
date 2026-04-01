@@ -18,13 +18,14 @@ from services import (
     SourceService,
     SystemdService,
 )
-from ui.prompt_app import PromptToolkitApp
+from ui.backend import UIBackend
+from ui.textual_app import TextualUI
 
 
 @dataclass(slots=True)
 class AppContainer:
     controller: AppController
-    ui: PromptToolkitApp
+    ui: UIBackend
     paths: ProjectPaths
     cleanup_service: CleanupService
     install_service: InstallService
@@ -72,7 +73,7 @@ def build_container() -> AppContainer:
         systemd_service=systemd_service,
         paths=paths,
     )
-    ui = PromptToolkitApp()
+    ui = TextualUI()
     return AppContainer(
         controller=controller,
         ui=ui,
