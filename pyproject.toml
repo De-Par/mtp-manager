@@ -9,7 +9,7 @@ description = "MTProxy lifecycle manager for Debian and Ubuntu VPS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "prompt_toolkit>=3.0.43,<4",
+  "textual>=8.2.1,<9",
 ]
 keywords = ["mtproxy", "mtproto", "telegram", "systemd", "tui"]
 classifiers = [
