@@ -28,29 +28,45 @@ class CleanupService:
 
     def factory_reset(self, *, remove_swap: bool = False) -> None:
         managed_swap_present = self.paths.managed_swap_marker.exists()
-        for unit in ("mtproxy.service", self.paths.refresh_timer_file.name, self.paths.cleanup_timer_file.name):
+        for unit in self.paths.all_unit_names:
             self.systemd.disable(unit)
         for target in (
             self.paths.lock_file,
+            self.paths.legacy_lock_file,
             self.paths.service_file,
             self.paths.refresh_service_file,
             self.paths.refresh_timer_file,
             self.paths.cleanup_service_file,
             self.paths.cleanup_timer_file,
+            self.paths.legacy_service_file,
+            self.paths.legacy_refresh_service_file,
+            self.paths.legacy_refresh_timer_file,
+            self.paths.legacy_cleanup_service_file,
+            self.paths.legacy_cleanup_timer_file,
             self.paths.settings_file,
             self.paths.inventory_file,
             self.paths.runtime_file,
+            self.paths.telemt_config_file,
             self.paths.secrets_file,
             self.paths.export_file,
             self.paths.sysctl_file,
+            self.paths.legacy_export_file,
+            self.paths.legacy_sysctl_file,
         ):
             if target.exists():
                 target.unlink()
-        for directory in (self.paths.conf_dir, self.paths.data_dir):
+        for directory in (
+            self.paths.conf_dir,
+            self.paths.data_dir,
+            self.paths.legacy_conf_dir,
+            self.paths.legacy_data_dir,
+        ):
             if directory.exists():
                 shutil.rmtree(directory)
         if self.paths.mt_dir.exists():
             shutil.rmtree(self.paths.mt_dir)
+        if self.paths.legacy_mt_dir.exists():
+            shutil.rmtree(self.paths.legacy_mt_dir)
         install_path = self.paths.self_install_path
         if (
             install_path.exists()

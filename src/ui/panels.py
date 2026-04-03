@@ -16,9 +16,10 @@ def render_dashboard_panel(model: DashboardViewModel, tr: Callable[[str], str] |
             "",
             f"{translate('service')}: {model.service_status}",
             f"{translate('public_ip')}: {model.public_ip}",
-            f"Client port: {model.mt_port}",
-            f"Stats port: {model.stats_port}",
-            f"Workers: {model.workers}",
+            f"telemt version: {model.telemt_version}",
+            f"Proxy port: {model.mt_port}",
+            f"API port: {model.stats_port}",
+            f"Workers (compat): {model.workers}",
             f"{translate('fake_tls')}: {fake_tls}",
             f"{translate('users_count')}: {model.users_count}",
             f"{translate('secrets_count')}: {model.secrets_count}",
@@ -32,14 +33,14 @@ def render_settings_panel(settings: AppSettings, tr: Callable[[str], str] | None
         [
             f"⚙ {translate('settings')}",
             "",
-            f"Client port: {settings.mt_port}",
-            f"Stats port: {settings.stats_port}",
-            f"Workers: {settings.workers}",
+            f"Proxy port: {settings.mt_port}",
+            f"API port: {settings.stats_port}",
+            f"Workers (compat): {settings.workers}",
             f"Fake TLS domain: {settings.fake_tls_domain or 'disabled'}",
             f"Ad tag: {settings.ad_tag or '-'}",
             f"{translate('language')}: {settings.ui_lang}",
             f"Managed swap: {'on' if settings.use_managed_swap else 'off'}",
-            f"Source mode: {settings.source_mode}",
+            f"{translate('source_mode')}: {settings.source_mode}",
         ]
     )
 

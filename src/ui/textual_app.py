@@ -13,6 +13,7 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.widget import MountError
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 from textual.worker import Worker, WorkerState
 
@@ -72,6 +73,7 @@ ACTION_LABEL_KEYS = {
     "cleanup_runtime": "cleanup_runtime",
     "cleanup_logs": "cleanup_logs",
     "factory_reset": "factory_reset",
+    "quit_app": "quit",
     "lang_en": "english",
     "lang_ru": "russian",
 }
@@ -192,6 +194,12 @@ class ConfirmScreen(ModalScreen[bool]):
         width: 16;
         margin: 0 1;
     }
+
+    .dialog-message-center {
+        width: 1fr;
+        content-align: center middle;
+        text-align: center;
+    }
     """
 
     def __init__(
@@ -201,18 +209,20 @@ class ConfirmScreen(ModalScreen[bool]):
         confirm_label: str = "Confirm",
         *,
         confirm_variant: str = "success",
+        center_message: bool = False,
     ) -> None:
         super().__init__()
         self.title_text = title
         self.message_text = message
         self.confirm_label = confirm_label
         self.confirm_variant = confirm_variant
+        self.center_message = center_message
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.message_text)
+                yield Static(self.message_text, classes="dialog-message-center" if self.center_message else "")
                 with Horizontal(classes="dialog-actions"):
                     yield Button("Cancel", id="cancel")
                     yield Button(self.confirm_label, id="confirm", variant=self.confirm_variant)
@@ -292,11 +302,11 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
                 yield Static(format_window_title("Edit Settings"), classes="dialog-title")
-                yield Static("Client port", classes="field-label")
+                yield Static("Proxy port", classes="field-label")
                 yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
-                yield Static("Stats port", classes="field-label")
+                yield Static("API port", classes="field-label")
                 yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
-                yield Static("Workers", classes="field-label")
+                yield Static("Workers (compat)", classes="field-label")
                 yield Input(str(self.settings.workers), id="workers", type="integer")
                 yield Static("Fake TLS domain", classes="field-label")
                 yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
@@ -539,11 +549,12 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         ("end", "scroll_end", "End"),
     ]
 
-    def __init__(self, title: str, body: str, *, return_menu: str | None = None) -> None:
+    def __init__(self, title: str, body: str, *, return_menu: str | None = None, clear_before_close: bool = False) -> None:
         super().__init__()
         self.title_text = title
         self.body_text = body
         self.return_menu = return_menu
+        self.clear_before_close = clear_before_close
 
     def compose(self) -> ComposeResult:
         with Container(id="viewer-overlay"):
@@ -560,9 +571,21 @@ class FullscreenTextScreen(ModalScreen[str | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "close":
-            self.dismiss(self.return_menu)
+            self._close_viewer()
 
     def action_close_viewer(self) -> None:
+        self._close_viewer()
+
+    def _close_viewer(self) -> None:
+        if self.clear_before_close:
+            body = self.query_one("#viewer-body", Static)
+            body.update("")
+            self.body_text = ""
+            self.call_after_refresh(self._dismiss_viewer_later)
+            return
+        self.dismiss(self.return_menu)
+
+    def _dismiss_viewer_later(self) -> None:
         self.dismiss(self.return_menu)
 
     def action_scroll_up(self) -> None:
@@ -896,6 +919,7 @@ class ManagerTextualApp(App[None]):
         self._top_split_ratio = 1 / 3
         self._hardware_snapshot: list[tuple[str, object]] = []
         self._dashboard_snapshot: DashboardViewModel | None = None
+        self._refresh_ui_scheduled = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -1102,8 +1126,9 @@ class ManagerTextualApp(App[None]):
         metrics = [
             (self._t("service_status"), dashboard.service_status),
             (self._t("public_ip"), dashboard.public_ip),
-            ("MT port", str(dashboard.mt_port)),
-            ("Stats port", str(dashboard.stats_port)),
+            ("telemt version", dashboard.telemt_version),
+            ("Proxy port", str(dashboard.mt_port)),
+            ("API port", str(dashboard.stats_port)),
             (self._t("fake_tls"), dashboard.fake_tls_domain or "disabled"),
             (self._t("users_count"), str(dashboard.users_count)),
             (self._t("secrets_count"), str(dashboard.secrets_count)),
@@ -1165,14 +1190,14 @@ class ManagerTextualApp(App[None]):
             ActionSpec("edit_settings", "Edit Settings"),
             ActionSpec("setup", "Setup", "success"),
             ActionSpec("apply_changes", "Apply Changes"),
-            ActionSpec("source_menu", "Source"),
+            ActionSpec("source_menu", "Binary"),
             ActionSpec("factory_reset", "Factory Reset", "error"),
         ]
 
     def _source_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("update_source", "Update Source"),
-            ActionSpec("rebuild", "Rebuild"),
+            ActionSpec("update_source", "Update telemt"),
+            ActionSpec("rebuild", "Reinstall telemt"),
         ]
 
     def _service_actions(self, service_status: str | None = None) -> list[ActionSpec]:
@@ -1225,18 +1250,29 @@ class ManagerTextualApp(App[None]):
         if self.state.selected_secret_id not in secret_ids:
             self.state.selected_secret_id = secret_ids[0]
 
-    async def _replace_list(self, list_id: str, items: list[ValueListItem], selected_index: int | None = 0) -> None:
+    async def _replace_list(self, list_id: str, items: list[ValueListItem], selected_index: int | None = 0) -> bool:
         list_view = self.query_one(f"#{list_id}", ListView)
-        await list_view.clear()
-        if items:
-            await list_view.extend(items)
-            list_view.index = max(0, min(selected_index or 0, len(items) - 1))
-        else:
-            list_view.index = None
+        if not list_view.is_attached:
+            return False
+        try:
+            await list_view.clear()
+            if items:
+                await list_view.extend(items)
+                list_view.index = max(0, min(selected_index or 0, len(items) - 1))
+            else:
+                list_view.index = None
+        except MountError:
+            return False
+        return True
 
-    async def _replace_actions(self, actions: list[ActionSpec]) -> None:
+    async def _replace_actions(self, actions: list[ActionSpec]) -> bool:
         container = self.query_one("#actions-container", Horizontal)
-        await container.remove_children()
+        if not container.is_attached:
+            return False
+        try:
+            await container.remove_children()
+        except MountError:
+            return False
         primary_actions, secondary_actions = self._split_actions(actions)
         self._secondary_actions = {action.key: action for action in secondary_actions}
         buttons = [
@@ -1249,7 +1285,23 @@ class ManagerTextualApp(App[None]):
             for action in primary_actions
         ]
         if buttons:
-            await container.mount_all(buttons)
+            try:
+                await container.mount_all(buttons)
+            except MountError:
+                return False
+        return True
+
+    def _queue_refresh_ui(self) -> None:
+        if self._refresh_ui_scheduled:
+            return
+        self._refresh_ui_scheduled = True
+        self.call_after_refresh(self._run_queued_refresh_ui)
+
+    def _run_queued_refresh_ui(self) -> None:
+        self._refresh_ui_scheduled = False
+        if not self.is_mounted:
+            return
+        self.run_worker(self.refresh_ui(), exclusive=True)
 
     def _build_overview_text(self) -> str:
         selected_user = self._get_selected_user()
@@ -1395,6 +1447,8 @@ class ManagerTextualApp(App[None]):
         return actions
 
     async def refresh_ui(self) -> None:
+        if not self.is_mounted:
+            return
         focused = self.focused
         self.state.current_screen = self._normalize_screen(self.state.current_screen)
         self._refresh_selection()
@@ -1431,10 +1485,18 @@ class ManagerTextualApp(App[None]):
         user_items, user_index = self._user_items()
         secret_items, secret_index = self._secret_items()
 
-        await self._replace_list("sections-list", section_items, section_index)
-        await self._replace_list("users-list", user_items, user_index)
-        await self._replace_list("secrets-list", secret_items, secret_index)
-        await self._replace_actions(self._action_specs())
+        if not await self._replace_list("sections-list", section_items, section_index):
+            self._queue_refresh_ui()
+            return
+        if not await self._replace_list("users-list", user_items, user_index):
+            self._queue_refresh_ui()
+            return
+        if not await self._replace_list("secrets-list", secret_items, secret_index):
+            self._queue_refresh_ui()
+            return
+        if not await self._replace_actions(self._action_specs()):
+            self._queue_refresh_ui()
+            return
         self._apply_top_split()
         if focused is None or focused not in self.walk_children():
             self._default_focus_target().focus()
@@ -1583,12 +1645,10 @@ class ManagerTextualApp(App[None]):
             self.run_worker(self.action_go_back(), exclusive=True)
             return
         if action == "configure_menu":
-            translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._configure_actions()]
-            self.push_screen(ActionMenuScreen(self._t("configure"), translated), lambda selected: self._handle_action_menu("configure", selected))
+            self._open_configure_menu()
             return
         if action == "source_menu":
-            translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._source_actions()]
-            self.push_screen(ActionMenuScreen(self._t("source", "Source"), translated), lambda selected: self._handle_action_menu("source", selected))
+            self._open_source_menu()
             return
         if action == "service_menu":
             translated = [
@@ -1640,13 +1700,13 @@ class ManagerTextualApp(App[None]):
         if action == "update_source":
             self._run_action(
                 self.controller.run_update,
-                busy_label=f"{self._t('update_source', 'Update Source')}...",
+                busy_label=f"{self._t('update_source', 'Update telemt')}...",
             )
             return
         if action == "rebuild":
             self._run_action(
                 self.controller.run_rebuild,
-                busy_label=f"{self._t('rebuild', 'Rebuild')}...",
+                busy_label=f"{self._t('rebuild', 'Reinstall telemt')}...",
             )
             return
         if action == "refresh_config":
@@ -1738,7 +1798,10 @@ class ManagerTextualApp(App[None]):
             self.state.output_title = "Activity"
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self.push_screen(FullscreenTextScreen("Service Logs", self.controller.service_logs_text()), self._handle_fullscreen_result)
+            self.push_screen(
+                FullscreenTextScreen("Service Logs", self.controller.service_logs_text(), clear_before_close=True),
+                self._handle_fullscreen_result,
+            )
             return
         if action == "cleanup_runtime":
             self._run_action(self.controller.cleanup_runtime)
@@ -1750,7 +1813,7 @@ class ManagerTextualApp(App[None]):
             self.push_screen(
                 ConfirmScreen(
                     "Factory Reset",
-                    "Stop MTProxy, remove managed systemd units, configs, sources, and runtime state?",
+                    "Stop telemt, remove managed systemd units, configs, binaries, and runtime state?",
                     "Factory Reset",
                     confirm_variant="error",
                 ),
@@ -1778,7 +1841,12 @@ class ManagerTextualApp(App[None]):
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
             self.push_screen(
-                FullscreenTextScreen("Service Logs", self.controller.service_logs_text(), return_menu="service"),
+                FullscreenTextScreen(
+                    "Service Logs",
+                    self.controller.service_logs_text(),
+                    return_menu="service",
+                    clear_before_close=True,
+                ),
                 self._handle_fullscreen_result,
             )
             return
@@ -1787,8 +1855,25 @@ class ManagerTextualApp(App[None]):
 
     def _handle_fullscreen_result(self, result: str | None) -> None:
         if result == "service":
-            translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._service_actions()]
-            self.push_screen(ActionMenuScreen(self._t("service_control"), translated), lambda selected: self._handle_action_menu("service", selected))
+            self.call_after_refresh(self._open_service_menu)
+
+    def _open_configure_menu(self) -> None:
+        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._configure_actions()]
+        self.push_screen(ActionMenuScreen(self._t("configure"), translated), lambda selected: self._handle_action_menu("configure", selected))
+
+    def _open_service_menu(self) -> None:
+        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._service_actions()]
+        self.push_screen(ActionMenuScreen(self._t("service_control"), translated), lambda selected: self._handle_action_menu("service", selected))
+
+    def _open_source_menu(self) -> None:
+        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._source_actions()]
+        self.push_screen(ActionMenuScreen(self._t("source", "Binary"), translated), self._handle_source_menu_result)
+
+    def _handle_source_menu_result(self, action: str | None) -> None:
+        if action is None:
+            self._open_configure_menu()
+            return
+        self._handle_action_menu("source", action)
 
     def _open_language_menu(self) -> None:
         actions = [
@@ -1868,6 +1953,22 @@ class ManagerTextualApp(App[None]):
                 busy_label=f"{self._t('factory_reset', 'Factory Reset')}...",
             )
 
+    def _open_quit_confirmation(self) -> None:
+        self.push_screen(
+            ConfirmScreen(
+                self._t("quit_confirm_title", "Quit"),
+                self._t("quit_confirm_message", "Close mtp-manager? Unsaved terminal context in the UI will be lost."),
+                self._t("quit_confirm_button", "Quit"),
+                confirm_variant="warning",
+                center_message=True,
+            ),
+            self._handle_quit_confirmation,
+        )
+
+    def _handle_quit_confirmation(self, confirmed: bool) -> None:
+        if confirmed:
+            self.exit()
+
     async def action_go_back(self) -> None:
         if self.screen_history:
             self.state.current_screen = self._normalize_screen(self.screen_history.pop())
@@ -1877,9 +1978,12 @@ class ManagerTextualApp(App[None]):
             self.state.current_screen = "dashboard"
             await self.refresh_ui()
             return
-        self.exit()
+        self._open_quit_confirmation()
 
     def action_quit_app(self) -> None:
+        if self.state.current_screen == "dashboard" and not self.screen_history:
+            self._open_quit_confirmation()
+            return
         self.exit()
 
     async def action_prev_screen(self) -> None:

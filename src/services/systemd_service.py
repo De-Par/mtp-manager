@@ -9,7 +9,7 @@ from paths import ProjectPaths
 
 
 class SystemdService:
-    MAIN_UNIT = "mtproxy.service"
+    MAIN_UNIT = "telemt.service"
 
     def __init__(self, systemd: SystemdManager, storage: JsonStorage, paths: ProjectPaths) -> None:
         self.systemd = systemd
@@ -20,7 +20,7 @@ class SystemdService:
         return textwrap.dedent(
             f"""\
             [Unit]
-            Description=MTProxy
+            Description=telemt proxy managed by mtp-manager
             After=network-online.target
             Wants=network-online.target
 
@@ -43,7 +43,7 @@ class SystemdService:
         return textwrap.dedent(
             f"""\
             [Unit]
-            Description=Refresh MTProxy proxy-multi.conf
+            Description=Refresh managed telemt config
 
             [Service]
             Type=oneshot
@@ -55,7 +55,7 @@ class SystemdService:
         return textwrap.dedent(
             """\
             [Unit]
-            Description=Daily MTProxy config refresh
+            Description=Daily telemt config refresh
 
             [Timer]
             OnBootSec=10m
@@ -96,6 +96,7 @@ class SystemdService:
         )
 
     def write_units(self, script_path: Path, *, enable_timers: bool = True) -> None:
+        self._remove_legacy_units()
         self.storage.save_text(self.paths.service_file, self.render_main_unit(script_path))
         self.storage.save_text(self.paths.refresh_service_file, self.render_refresh_service(script_path))
         self.storage.save_text(self.paths.refresh_timer_file, self.render_refresh_timer())
@@ -107,35 +108,47 @@ class SystemdService:
             self.systemd.enable(self.paths.cleanup_timer_file.name)
 
     def is_installed(self) -> bool:
-        return self.paths.service_file.exists()
+        return self.paths.service_file.exists() or self.paths.legacy_service_file.exists()
 
     def start(self) -> None:
-        self.systemd.start(self.MAIN_UNIT)
+        self.systemd.start(self._preferred_main_unit())
 
     def stop(self) -> None:
-        self.systemd.stop(self.MAIN_UNIT)
+        self.systemd.stop(self._preferred_main_unit())
 
     def restart(self) -> None:
-        self.systemd.restart(self.MAIN_UNIT)
+        self.systemd.restart(self._preferred_main_unit())
 
     def try_restart(self) -> None:
-        self.systemd.try_restart(self.MAIN_UNIT)
+        self.systemd.try_restart(self._preferred_main_unit())
 
     def state(self) -> str:
         if not self.is_installed():
             return "not-installed"
-        return self.systemd.is_active(self.MAIN_UNIT)
+        return self.systemd.is_active(self._preferred_main_unit())
 
     def status(self) -> str:
-        return self.systemd.status(self.MAIN_UNIT)
+        return self.systemd.status(self._preferred_main_unit())
 
     def logs(self) -> str:
-        return self.systemd.logs(self.MAIN_UNIT)
+        return self.systemd.logs(self._preferred_main_unit())
 
     def preview(self) -> str:
-        return self.systemd.cat(self.MAIN_UNIT)
+        return self.systemd.cat(self._preferred_main_unit())
 
     def disable_all(self) -> None:
-        self.systemd.disable(self.MAIN_UNIT)
-        self.systemd.disable(self.paths.refresh_timer_file.name)
-        self.systemd.disable(self.paths.cleanup_timer_file.name)
+        for unit in self.paths.all_unit_names:
+            self.systemd.disable(unit)
+
+    def _preferred_main_unit(self) -> str:
+        if self.paths.service_file.exists():
+            return self.paths.service_file.name
+        if self.paths.legacy_service_file.exists():
+            return self.paths.legacy_service_file.name
+        return self.MAIN_UNIT
+
+    def _remove_legacy_units(self) -> None:
+        for unit in self.paths.legacy_unit_names:
+            self.systemd.disable(unit)
+        for unit_file in self.paths.legacy_unit_files:
+            unit_file.unlink(missing_ok=True)

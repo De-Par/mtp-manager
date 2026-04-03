@@ -4,7 +4,6 @@ from collections.abc import Sequence
 import sys
 
 from bootstrap import build_container
-from services.network_service import PROXY_CONFIG_URL
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -13,9 +12,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if len(argv) >= 2 and argv[:2] == ["internal", "run-proxy"]:
         return container.runtime_service.exec_proxy(container.settings_service.load())
     if len(argv) >= 2 and argv[:2] == ["internal", "refresh-proxy-config"]:
-        changed = container.network_service.refresh_if_changed(PROXY_CONFIG_URL, container.paths.proxy_config_file)
-        if changed and container.systemd_service.is_installed():
-            container.systemd_service.try_restart()
+        container.runtime_service.reconcile(container.settings_service.load(), container.systemd_service, restart=True)
         return 0
     if len(argv) >= 2 and argv[:2] == ["internal", "run-cleanup"]:
         container.cleanup_service.cleanup_logs()

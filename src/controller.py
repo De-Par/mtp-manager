@@ -17,6 +17,7 @@ from services import CleanupService, DiagnosticsService, ExportService, InstallS
 class DashboardViewModel:
     service_status: str
     public_ip: str
+    telemt_version: str
     mt_port: int
     stats_port: int
     workers: int
@@ -96,6 +97,7 @@ class AppController:
         report = self.diagnostics_service.build_report(settings)
         service_status = next((check.value for check in report.checks if check.key == "service_status"), "unknown")
         public_ip = next((check.value for check in report.checks if check.key == "public_ip"), "unknown")
+        telemt_version = next((check.value for check in report.checks if check.key == "telemt_version"), "unknown")
         enabled_secrets = self.runtime_service.enabled_secret_count()
         if enabled_secrets == 0:
             service_status = "no-secrets"
@@ -104,6 +106,7 @@ class AppController:
         return DashboardViewModel(
             service_status=service_status,
             public_ip=public_ip,
+            telemt_version=telemt_version,
             mt_port=settings.mt_port,
             stats_port=settings.stats_port,
             workers=settings.workers,
@@ -283,35 +286,36 @@ class AppController:
         settings = self.load_settings()
         if self.systemd_service.is_installed():
             self.install_service.update_source(settings, self.script_path, source_mode="update")
-            return "Setup refreshed the existing installation."
+            return "Setup refreshed the existing telemt installation."
 
         from services.install_service import SetupOptions
 
         self.install_service.initial_setup(settings, self.script_path, SetupOptions(source_mode=source_mode))
-        return "Setup completed."
+        return "telemt setup completed."
 
     def run_update(self, *, source_mode: str = "update") -> str:
         self.install_service.update_source(self.load_settings(), self.script_path, source_mode=source_mode)
-        return "Source updated."
+        return "telemt binary updated."
 
     def run_rebuild(self) -> str:
         self.install_service.rebuild_source(self.load_settings())
-        return "Rebuild completed."
+        return "telemt binary reinstalled."
 
     def run_reinstall_units(self) -> str:
         self.install_service.reinstall_units(self.script_path)
         return "Systemd units rewritten"
 
     def run_apply_changes(self) -> str:
-        changed = self.install_service.refresh_proxy_config()
-        enabled = self.install_service.refresh_runtime(self.load_settings())
+        settings = self.load_settings()
+        changed = self.install_service.refresh_proxy_config(settings)
+        enabled = self.runtime_service.enabled_secret_count()
         if changed:
-            return f"Changes applied. Config refreshed; enabled secrets: {enabled}."
+            return f"Changes applied. telemt config refreshed; enabled secrets: {enabled}."
         return f"Changes applied. Runtime refreshed; enabled secrets: {enabled}."
 
     def run_refresh_proxy_config(self) -> str:
-        changed = self.install_service.refresh_proxy_config()
-        return "Config refreshed." if changed else "Config is already up to date."
+        changed = self.install_service.refresh_proxy_config(self.load_settings())
+        return "telemt config refreshed." if changed else "telemt config is already up to date."
 
     def run_refresh_runtime(self) -> str:
         enabled = self.install_service.refresh_runtime(self.load_settings())
@@ -351,14 +355,14 @@ class AppController:
 
     def factory_reset(self, *, remove_swap: bool = False) -> str:
         self.cleanup_service.factory_reset(remove_swap=remove_swap)
-        return "Factory reset completed. Managed MTProxy services and files were removed."
+        return "Factory reset completed. Managed telemt services and files were removed."
 
     def set_language(self, lang: str) -> AppSettings:
         return self.update_settings(ui_lang=lang)
 
     def _ensure_service_can_run(self) -> None:
         settings = self.load_settings()
-        self.runtime_service.rebuild_secrets_file()
+        self.runtime_service.rebuild_runtime_config(settings)
         enabled_secrets = self.runtime_service.enabled_secret_count()
         if enabled_secrets == 0:
             raise AppError("Enable at least one secret before starting the service.")

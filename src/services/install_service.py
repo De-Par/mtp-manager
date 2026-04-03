@@ -10,7 +10,6 @@ from infra.locale import LocaleManager
 from infra.shell import ShellRunner
 from infra.ufw import UfwManager
 from models.settings import AppSettings
-from services.network_service import NetworkService, PROXY_CONFIG_URL, PROXY_SECRET_URL
 from services.proxy_runtime_service import ProxyRuntimeService
 from services.source_service import SourceService
 from services.systemd_service import SystemdService
@@ -30,7 +29,6 @@ class InstallService:
         distro: DistroProbe,
         locale: LocaleManager,
         source: SourceService,
-        network: NetworkService,
         runtime: ProxyRuntimeService,
         systemd: SystemdService,
         ufw: UfwManager,
@@ -39,14 +37,13 @@ class InstallService:
         self.distro = distro
         self.locale = locale
         self.source = source
-        self.network = network
         self.runtime = runtime
         self.systemd = systemd
         self.ufw = ufw
 
-    def ensure_proxy_assets(self) -> None:
-        self.network.download(PROXY_SECRET_URL, self.runtime.paths.proxy_secret_file)
-        self.network.download(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)
+    def _stop_service_for_binary_update(self) -> None:
+        if self.systemd.is_installed():
+            self.systemd.stop()
 
     def initial_setup(self, settings: AppSettings, script_path: Path, options: SetupOptions) -> None:
         if os.geteuid() != 0:
@@ -55,10 +52,9 @@ class InstallService:
         self.locale.ensure_c_utf8()
         if options.install_dependencies:
             self.shell.run(["apt-get", "update"])
-            self.shell.run(["apt-get", "install", "-y", "curl", "git", "build-essential", "libssl-dev", "zlib1g-dev", "ca-certificates", "ufw"])
-        self.source.clone_or_update(options.source_mode)
-        self.source.build()
-        self.ensure_proxy_assets()
+            self.shell.run(["apt-get", "install", "-y", "curl", "ca-certificates", "ufw"])
+        self._stop_service_for_binary_update()
+        self.source.install(options.source_mode)
         self.systemd.write_units(script_path)
         enabled_count = self.runtime.reconcile(settings, self.systemd, restart=False)
         if options.configure_firewall:
@@ -71,20 +67,18 @@ class InstallService:
         self.initial_setup(settings, script_path, SetupOptions(source_mode=source_mode, install_dependencies=False, configure_firewall=True))
 
     def rebuild_source(self, settings: AppSettings) -> None:
-        self.source.clone_or_update("rebuild")
-        self.source.build()
-        self.ensure_proxy_assets()
+        self._stop_service_for_binary_update()
+        self.source.install("rebuild")
         self.runtime.reconcile(settings, self.systemd, restart=True)
 
     def reinstall_units(self, script_path: Path) -> None:
         self.systemd.write_units(script_path)
 
-    def refresh_proxy_config(self) -> bool:
-        changed = self.network.refresh_if_changed(PROXY_CONFIG_URL, self.runtime.paths.proxy_config_file)
-        if changed and self.systemd.is_installed():
-            self.systemd.try_restart()
-        return changed
+    def refresh_proxy_config(self, settings: AppSettings) -> bool:
+        previous = self.runtime.paths.telemt_config_file.read_text(encoding="utf-8") if self.runtime.paths.telemt_config_file.exists() else ""
+        self.runtime.reconcile(settings, self.systemd, restart=True)
+        current = self.runtime.paths.telemt_config_file.read_text(encoding="utf-8") if self.runtime.paths.telemt_config_file.exists() else ""
+        return current != previous
 
     def refresh_runtime(self, settings: AppSettings) -> int:
-        self.ensure_proxy_assets()
         return self.runtime.reconcile(settings, self.systemd, restart=True)

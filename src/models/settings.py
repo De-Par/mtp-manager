@@ -10,6 +10,7 @@ PORT_MIN = 1
 PORT_MAX = 65535
 SourceMode = Literal["fresh", "reuse", "update", "rebuild"]
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$")
+AD_TAG_RE = re.compile(r"^[0-9A-Fa-f]{32}$")
 SOURCE_MODES = {"fresh", "reuse", "update", "rebuild"}
 
 
@@ -35,6 +36,8 @@ class AppSettings:
             raise ValidationError("ui_lang must be 'ru' or 'en'")
         if self.fake_tls_domain and not DOMAIN_RE.fullmatch(self.fake_tls_domain):
             raise ValidationError("fake_tls_domain must be a valid domain name")
+        if self.ad_tag and not AD_TAG_RE.fullmatch(self.ad_tag):
+            raise ValidationError("ad_tag must be a 32-character hexadecimal string")
         if self.source_mode not in SOURCE_MODES:
             raise ValidationError("source_mode is invalid")
 
