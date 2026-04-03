@@ -196,6 +196,81 @@ class ConfirmScreen(ModalScreen[bool]):
         margin: 0 1;
     }
 
+    .dialog-actions Button.-success {
+        background: white;
+        color: #1b4332;
+        border: round #74c69d;
+        text-style: bold;
+    }
+
+    .dialog-actions Button.-success:hover {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
+    }
+
+    .dialog-actions Button.-success:focus {
+        background: #74c69d;
+        color: white;
+        border: round #40916c;
+    }
+
+    .dialog-actions Button.-success:hover:focus {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
+    }
+
+    .dialog-actions Button.-error {
+        background: white;
+        color: #a61e4d;
+        border: round #f1aeb5;
+        text-style: bold;
+    }
+
+    .dialog-actions Button.-error:hover {
+        background: #fff5f5;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    .dialog-actions Button.-error:focus {
+        background: #e03131;
+        color: white;
+        border: round #c92a2a;
+    }
+
+    .dialog-actions Button.-error:hover:focus {
+        background: #fff5f5;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    .dialog-actions Button.-warning {
+        background: white;
+        color: #7c5c00;
+        border: round #e9c46a;
+        text-style: bold;
+    }
+
+    .dialog-actions Button.-warning:hover {
+        background: #fff9db;
+        color: #7c5c00;
+        border: round #e0b84d;
+    }
+
+    .dialog-actions Button.-warning:focus {
+        background: #e9c46a;
+        color: #523d00;
+        border: round #c99a1d;
+    }
+
+    .dialog-actions Button.-warning:hover:focus {
+        background: #fff9db;
+        color: #7c5c00;
+        border: round #e0b84d;
+    }
+
     .dialog-message-center {
         width: 1fr;
         content-align: center middle;
@@ -232,7 +307,7 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(event.button.id == "confirm")
 
     def on_mount(self) -> None:
-        self.query_one("#cancel", Button).focus()
+        self.set_focus(None)
 
 
 class TextInputScreen(ModalScreen[str | None]):
@@ -351,6 +426,17 @@ class ActionMenuScreen(ModalScreen[str | None]):
     .menu-button {
         width: 28;
         margin-bottom: 1;
+        background: white;
+        color: #081c15;
+        border: round #95d5b2;
+        text-style: bold;
+    }
+
+    Button.menu-button:hover {
+        background: #f4fbf6;
+        color: #081c15;
+        border: round #74c69d;
+        text-style: bold;
     }
 
     Button.menu-button:focus {
@@ -358,6 +444,85 @@ class ActionMenuScreen(ModalScreen[str | None]):
         color: white;
         border: round #40916c;
         text-style: bold;
+    }
+
+    Button.menu-button:hover:focus {
+        background: #f4fbf6;
+        color: #081c15;
+        border: round #74c69d;
+        text-style: bold;
+    }
+
+    Button.menu-button.-success {
+        background: white;
+        color: #1b4332;
+        border: round #74c69d;
+    }
+
+    Button.menu-button.-success:hover {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
+    }
+
+    Button.menu-button.-success:focus {
+        background: #74c69d;
+        color: white;
+        border: round #40916c;
+    }
+
+    Button.menu-button.-success:hover:focus {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
+    }
+
+    Button.menu-button.-error {
+        background: white;
+        color: #a61e4d;
+        border: round #f1aeb5;
+    }
+
+    Button.menu-button.-error:hover {
+        background: #fff5f5;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    Button.menu-button.-error:focus {
+        background: #e03131;
+        color: white;
+        border: round #c92a2a;
+    }
+
+    Button.menu-button.-error:hover:focus {
+        background: #fff5f5;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    Button.menu-button.-warning {
+        background: white;
+        color: #7c5c00;
+        border: round #e9c46a;
+    }
+
+    Button.menu-button.-warning:hover {
+        background: #fff9db;
+        color: #7c5c00;
+        border: round #e0b84d;
+    }
+
+    Button.menu-button.-warning:focus {
+        background: #e9c46a;
+        color: #523d00;
+        border: round #c99a1d;
+    }
+
+    Button.menu-button.-warning:hover:focus {
+        background: #fff9db;
+        color: #7c5c00;
+        border: round #e0b84d;
     }
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
@@ -395,7 +560,7 @@ class ActionMenuScreen(ModalScreen[str | None]):
         ("escape", "dismiss_none", "Close"),
     ]
 
-    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = True) -> None:
+    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = False) -> None:
         super().__init__()
         self.title_text = title
         self.actions = actions
@@ -453,6 +618,9 @@ class ActionMenuScreen(ModalScreen[str | None]):
     def action_dismiss_none(self) -> None:
         self.dismiss(None)
 
+    def _clear_initial_focus(self) -> None:
+        self.set_focus(None)
+
     def on_mount(self) -> None:
         if self.auto_focus_first:
             buttons = self._focusable_buttons()
@@ -460,6 +628,7 @@ class ActionMenuScreen(ModalScreen[str | None]):
                 buttons[0].focus()
         else:
             self.add_class("-suppress-initial-highlight")
+            self.call_after_refresh(self._clear_initial_focus)
 
 
 class FullscreenTextScreen(ModalScreen[str | None]):
@@ -842,11 +1011,35 @@ class ManagerTextualApp(App[None]):
         border: round #52b788;
     }
 
+    Button.-style-default:hover:focus {
+        background: #f4fbf6;
+        color: #081c15;
+        border: round #52b788;
+    }
+
     Button.-success {
         background: #f4fbf6;
         color: #1b4332;
         border: round #74c69d;
         text-style: bold;
+    }
+
+    Button.-success:hover {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
+    }
+
+    Button.-success:focus {
+        background: #74c69d;
+        color: white;
+        border: round #40916c;
+    }
+
+    Button.-success:hover:focus {
+        background: #eefaf2;
+        color: #1b4332;
+        border: round #52b788;
     }
 
     Button.-error {
@@ -856,11 +1049,47 @@ class ManagerTextualApp(App[None]):
         text-style: bold;
     }
 
+    Button.-error:hover {
+        background: #fff1f2;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    Button.-error:focus {
+        background: #e03131;
+        color: white;
+        border: round #c92a2a;
+    }
+
+    Button.-error:hover:focus {
+        background: #fff1f2;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
     Button.-warning {
         background: #fff9db;
         color: #7c5c00;
         border: round #e9c46a;
         text-style: bold;
+    }
+
+    Button.-warning:hover {
+        background: #fff4c2;
+        color: #7c5c00;
+        border: round #e0b84d;
+    }
+
+    Button.-warning:focus {
+        background: #e9c46a;
+        color: #523d00;
+        border: round #c99a1d;
+    }
+
+    Button.-warning:hover:focus {
+        background: #fff4c2;
+        color: #7c5c00;
+        border: round #e0b84d;
     }
 
     Button.-flat {
@@ -1384,6 +1613,11 @@ class ManagerTextualApp(App[None]):
             return self.query_one("#users-list", ListView)
         return self.query_one("#sections-list", ListView)
 
+    def _restore_default_focus(self) -> None:
+        if not self.is_mounted:
+            return
+        self._default_focus_target().focus()
+
     async def _refresh_user_selection_view(self, *, refresh_users: bool = False, refresh_secrets: bool = False) -> None:
         self._refresh_selection()
         self.query_one("#overview-content", Static).update(self._render_fields(self._build_overview_text()))
@@ -1640,6 +1874,7 @@ class ManagerTextualApp(App[None]):
         if not button_id.startswith("action-"):
             return
         action = button_id.removeprefix("action-")
+        self._restore_default_focus()
         self._handle_ui_action(action)
 
     def _handle_ui_action(self, action: str) -> None:
@@ -1840,6 +2075,9 @@ class ManagerTextualApp(App[None]):
             self._change_language("ru")
 
     def _handle_action_menu(self, menu_name: str, action: str | None) -> None:
+        if action is None:
+            self.call_after_refresh(self._restore_default_focus)
+            return
         if action == "service_status" and menu_name == "service":
             self.state.output_title = "Activity"
             self.state.output_body = ""
@@ -1869,6 +2107,8 @@ class ManagerTextualApp(App[None]):
     def _handle_fullscreen_result(self, result: str | None) -> None:
         if result == "service":
             self.call_after_refresh(self._open_service_menu)
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _open_configure_menu(self) -> None:
         translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._configure_actions()]
@@ -1900,6 +2140,7 @@ class ManagerTextualApp(App[None]):
         if action:
             self._handle_ui_action(action)
             return
+        self.call_after_refresh(self._restore_default_focus)
         self.run_worker(self.refresh_ui(), exclusive=True)
 
     def _change_language(self, lang: str) -> None:
@@ -1923,6 +2164,8 @@ class ManagerTextualApp(App[None]):
     def _handle_add_user(self, result: str | None) -> None:
         if result:
             self._run_action(lambda: self.controller.add_user(result), success_message=f"User {result} added.")
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _handle_add_secret(self, result: str | None) -> None:
         if result is not None and self.state.selected_user:
@@ -1930,9 +2173,12 @@ class ManagerTextualApp(App[None]):
                 lambda: self.controller.add_secret(self.state.selected_user or "", result),
                 success_message=f"Secret added for {self.state.selected_user}.",
             )
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _handle_install_ref(self, result: str | None) -> None:
         if result is None:
+            self.call_after_refresh(self._restore_default_focus)
             return
         busy_label = f"Installing {result.strip()}..." if result.strip() else "Installing latest telemt..."
         self._run_action(
@@ -1942,6 +2188,7 @@ class ManagerTextualApp(App[None]):
 
     def _handle_settings_screen(self, result: dict[str, str] | None) -> None:
         if not result:
+            self.call_after_refresh(self._restore_default_focus)
             return
         try:
             self.controller.update_settings(
@@ -1963,10 +2210,14 @@ class ManagerTextualApp(App[None]):
     def _handle_delete_user(self, confirmed: bool) -> None:
         if confirmed and self.state.selected_user:
             self._run_action(lambda: self.controller.delete_user(self.state.selected_user or ""))
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _handle_delete_secret(self, confirmed: bool) -> None:
         if confirmed and self.state.selected_secret_id is not None:
             self._run_action(lambda: self.controller.delete_secret(self.state.selected_secret_id))
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _handle_factory_reset(self, confirmed: bool) -> None:
         if confirmed:
@@ -1974,6 +2225,8 @@ class ManagerTextualApp(App[None]):
                 lambda: self.controller.factory_reset(remove_swap=False),
                 busy_label=f"{self._t('factory_reset', 'Factory Reset')}...",
             )
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     def _open_quit_confirmation(self) -> None:
         self.push_screen(
@@ -1990,6 +2243,8 @@ class ManagerTextualApp(App[None]):
     def _handle_quit_confirmation(self, confirmed: bool) -> None:
         if confirmed:
             self.exit()
+            return
+        self.call_after_refresh(self._restore_default_focus)
 
     async def action_go_back(self) -> None:
         if self.screen_history:
