@@ -44,5 +44,12 @@ class DiagnosticsService:
             result = self.shell.run(args, check=False)
             output = (result.stdout or result.stderr or "").strip()
             if output:
-                return output.splitlines()[0].strip()
+                return self._normalize_version(output.splitlines()[0].strip())
         return "unknown"
+
+    @staticmethod
+    def _normalize_version(raw_value: str) -> str:
+        parts = raw_value.split()
+        if len(parts) >= 2 and parts[0].lower() == "telemt":
+            return parts[1]
+        return raw_value

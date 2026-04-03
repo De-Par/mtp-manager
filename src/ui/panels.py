@@ -38,6 +38,7 @@ def render_settings_panel(settings: AppSettings, tr: Callable[[str], str] | None
             f"Workers (compat): {settings.workers}",
             f"Fake TLS domain: {settings.fake_tls_domain or 'disabled'}",
             f"Ad tag: {settings.ad_tag or '-'}",
+            f"telemt ref: {settings.telemt_ref or 'latest'}",
             f"{translate('language')}: {settings.ui_lang}",
             f"Managed swap: {'on' if settings.use_managed_swap else 'off'}",
             f"{translate('source_mode')}: {settings.source_mode}",

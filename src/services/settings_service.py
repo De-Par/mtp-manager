@@ -36,7 +36,7 @@ class SettingsService:
         self.storage.save_json(self.paths.settings_file, settings.to_dict())
         return settings
 
-    def update(self, **changes: object) -> AppSettings:
+    def update(self, *, apply_runtime: bool = True, **changes: object) -> AppSettings:
         current = self.load()
         updated = replace(current, **changes)
         updated.validate()
@@ -45,6 +45,6 @@ class SettingsService:
             self.ufw.allow_tcp(22)
             self.ufw.allow_tcp(updated.mt_port)
             self.ufw.delete_allow_tcp(current.mt_port)
-        if self.runtime and self.systemd:
+        if apply_runtime and self.runtime and self.systemd:
             self.runtime.reconcile(updated, self.systemd, restart=True)
         return updated

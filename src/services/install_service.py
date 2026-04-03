@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from errors import PlatformError
+from errors import PlatformError, SourceBuildRequiredError
 from infra.distro import DistroProbe
 from infra.locale import LocaleManager
 from infra.shell import ShellRunner
@@ -23,6 +23,8 @@ class SetupOptions:
 
 
 class InstallService:
+    BUILD_PACKAGES = ["cargo", "rustc", "build-essential", "pkg-config"]
+
     def __init__(
         self,
         shell: ShellRunner,
@@ -45,16 +47,30 @@ class InstallService:
         if self.systemd.is_installed():
             self.systemd.stop()
 
+    def _install_packages(self, packages: list[str]) -> None:
+        if not packages:
+            return
+        self.shell.run(["apt-get", "update"])
+        self.shell.run(["apt-get", "install", "-y", *packages])
+
+    def _install_source_with_fallback(self, mode: str, ref: str) -> None:
+        try:
+            self.source.install(mode, ref, allow_build=False)
+        except SourceBuildRequiredError:
+            self._install_packages(self.BUILD_PACKAGES)
+            self.source.install(mode, ref, allow_build=True)
+
     def initial_setup(self, settings: AppSettings, script_path: Path, options: SetupOptions) -> None:
         if os.geteuid() != 0:
             raise PlatformError("this action requires root")
         self.distro.detect()
         self.locale.ensure_c_utf8()
+        packages: list[str] = []
         if options.install_dependencies:
-            self.shell.run(["apt-get", "update"])
-            self.shell.run(["apt-get", "install", "-y", "curl", "ca-certificates", "ufw"])
+            packages.extend(["curl", "ca-certificates", "ufw"])
+        self._install_packages(sorted(set(packages)))
         self._stop_service_for_binary_update()
-        self.source.install(options.source_mode)
+        self._install_source_with_fallback(options.source_mode, settings.telemt_ref)
         self.systemd.write_units(script_path)
         enabled_count = self.runtime.reconcile(settings, self.systemd, restart=False)
         if options.configure_firewall:
@@ -68,7 +84,7 @@ class InstallService:
 
     def rebuild_source(self, settings: AppSettings) -> None:
         self._stop_service_for_binary_update()
-        self.source.install("rebuild")
+        self._install_source_with_fallback("rebuild", settings.telemt_ref)
         self.runtime.reconcile(settings, self.systemd, restart=True)
 
     def reinstall_units(self, script_path: Path) -> None:

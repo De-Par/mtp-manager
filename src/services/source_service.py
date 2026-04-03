@@ -5,8 +5,10 @@ from pathlib import Path
 import shutil
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 
+from errors import SourceBuildRequiredError
 from infra.shell import ShellRunner
 from paths import ProjectPaths
 
@@ -19,17 +21,36 @@ class SourceService:
         self.shell = shell
         self.paths = paths
 
-    def install(self, mode: str) -> Path:
+    def install(self, mode: str, ref: str = "", *, allow_build: bool = True) -> Path:
+        normalized_ref = ref.strip()
         if mode == "fresh" and self.paths.mt_dir.exists():
             shutil.rmtree(self.paths.mt_dir)
-        if mode == "reuse" and self.paths.binary_file.exists():
+        if mode == "reuse" and self.paths.binary_file.exists() and not normalized_ref:
             return self.paths.binary_file
 
-        archive_url = f"{self.REPO_URL}/releases/latest/download/{self._asset_name()}"
         self.paths.bin_dir.mkdir(parents=True, exist_ok=True)
+        if not normalized_ref:
+            self._install_release_binary()
+            return self.paths.binary_file
+        try:
+            self._install_release_binary(normalized_ref)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+            if not allow_build:
+                raise SourceBuildRequiredError(f"telemt ref requires source build: {normalized_ref}") from exc
+            self._build_from_source(normalized_ref)
+        return self.paths.binary_file
+
+    def _install_release_binary(self, ref: str | None = None) -> Path:
+        asset_name = self._asset_name()
+        if ref:
+            archive_url = f"{self.REPO_URL}/releases/download/{ref}/{asset_name}"
+        else:
+            archive_url = f"{self.REPO_URL}/releases/latest/download/{asset_name}"
 
         with tempfile.TemporaryDirectory(prefix="telemt-release-") as temp_dir:
-            archive_path = Path(temp_dir) / self._asset_name()
+            archive_path = Path(temp_dir) / asset_name
             with urllib.request.urlopen(archive_url, timeout=60) as response:
                 archive_path.write_bytes(response.read())
 
@@ -49,6 +70,26 @@ class SourceService:
                     raise FileNotFoundError(f"failed to extract {self.BIN_NAME} from archive")
                 self.paths.binary_file.write_bytes(extracted.read())
 
+        os.chmod(self.paths.binary_file, 0o755)
+        return self.paths.binary_file
+
+    def _build_from_source(self, ref: str) -> Path:
+        archive_url = f"https://codeload.github.com/telemt/telemt/tar.gz/{ref}"
+        with tempfile.TemporaryDirectory(prefix="telemt-source-") as temp_dir:
+            temp_root = Path(temp_dir)
+            archive_path = temp_root / "telemt-source.tar.gz"
+            with urllib.request.urlopen(archive_url, timeout=60) as response:
+                archive_path.write_bytes(response.read())
+            with tarfile.open(archive_path, "r:gz") as archive:
+                archive.extractall(temp_root)
+            source_root = next((item for item in temp_root.iterdir() if item.is_dir()), None)
+            if source_root is None:
+                raise FileNotFoundError(f"failed to extract telemt source for ref: {ref}")
+            self.shell.run(["cargo", "build", "--release"], cwd=source_root)
+            built_binary = source_root / "target" / "release" / self.BIN_NAME
+            if not built_binary.exists():
+                raise FileNotFoundError(f"built telemt binary not found for ref: {ref}")
+            self.paths.binary_file.write_bytes(built_binary.read_bytes())
         os.chmod(self.paths.binary_file, 0o755)
         return self.paths.binary_file
 

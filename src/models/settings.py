@@ -11,6 +11,7 @@ PORT_MAX = 65535
 SourceMode = Literal["fresh", "reuse", "update", "rebuild"]
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$")
 AD_TAG_RE = re.compile(r"^[0-9A-Fa-f]{32}$")
+REF_RE = re.compile(r"^[^\s]+$")
 SOURCE_MODES = {"fresh", "reuse", "update", "rebuild"}
 
 
@@ -21,6 +22,7 @@ class AppSettings:
     workers: int = 1
     fake_tls_domain: str = ""
     ad_tag: str = ""
+    telemt_ref: str = ""
     ui_lang: str = "en"
     use_managed_swap: bool = False
     source_mode: SourceMode = "fresh"
@@ -38,6 +40,8 @@ class AppSettings:
             raise ValidationError("fake_tls_domain must be a valid domain name")
         if self.ad_tag and not AD_TAG_RE.fullmatch(self.ad_tag):
             raise ValidationError("ad_tag must be a 32-character hexadecimal string")
+        if self.telemt_ref and not REF_RE.fullmatch(self.telemt_ref):
+            raise ValidationError("telemt_ref must not contain whitespace")
         if self.source_mode not in SOURCE_MODES:
             raise ValidationError("source_mode is invalid")
 
@@ -53,6 +57,7 @@ class AppSettings:
             workers=int(payload.get("workers", 1)),
             fake_tls_domain=str(payload.get("fake_tls_domain", "")),
             ad_tag=str(payload.get("ad_tag", "")),
+            telemt_ref=str(payload.get("telemt_ref", "")),
             ui_lang=str(payload.get("ui_lang", "en")),
             use_managed_swap=bool(payload.get("use_managed_swap", False)),
             source_mode=str(payload.get("source_mode", "fresh")),  # type: ignore[arg-type]

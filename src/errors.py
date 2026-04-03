@@ -28,3 +28,7 @@ class ServiceError(AppError):
 
 class DiagnosticError(AppError):
     """Diagnostics execution failed."""
+
+
+class SourceBuildRequiredError(AppError):
+    """Requested source ref is not available as a release binary."""

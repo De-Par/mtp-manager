@@ -70,6 +70,7 @@ class AppController:
         workers: int | None = None,
         fake_tls_domain: str | None = None,
         ad_tag: str | None = None,
+        telemt_ref: str | None = None,
         ui_lang: str | None = None,
     ) -> AppSettings:
         current = self.load_settings()
@@ -84,6 +85,8 @@ class AppController:
             changes["fake_tls_domain"] = fake_tls_domain.strip()
         if ad_tag is not None:
             changes["ad_tag"] = ad_tag.strip()
+        if telemt_ref is not None:
+            changes["telemt_ref"] = telemt_ref.strip()
         if ui_lang is not None:
             changes["ui_lang"] = ui_lang.strip().lower()
         updated = self.settings_service.update(**changes)
@@ -300,6 +303,19 @@ class AppController:
     def run_rebuild(self) -> str:
         self.install_service.rebuild_source(self.load_settings())
         return "telemt binary reinstalled."
+
+    def install_telemt_ref(self, ref: str) -> str:
+        normalized_ref = ref.strip()
+        settings = self.settings_service.update(apply_runtime=False, telemt_ref=normalized_ref)
+        if self.systemd_service.is_installed():
+            self.install_service.update_source(settings, self.script_path, source_mode="update")
+        else:
+            from services.install_service import SetupOptions
+
+            self.install_service.initial_setup(settings, self.script_path, SetupOptions(source_mode=settings.source_mode))
+        if normalized_ref:
+            return f"telemt installed from ref: {normalized_ref}"
+        return "telemt installed from latest release."
 
     def run_reinstall_units(self) -> str:
         self.install_service.reinstall_units(self.script_path)

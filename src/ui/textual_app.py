@@ -51,6 +51,7 @@ ACTION_LABEL_KEYS = {
     "initial_setup": "initial_setup",
     "update_source": "update_source",
     "rebuild": "rebuild",
+    "install_ref": "install_ref",
     "reinstall_units": "reinstall_units",
     "refresh_config": "refresh_config",
     "refresh_runtime": "refresh_runtime",
@@ -1198,6 +1199,7 @@ class ManagerTextualApp(App[None]):
         return [
             ActionSpec("update_source", "Update telemt"),
             ActionSpec("rebuild", "Reinstall telemt"),
+            ActionSpec("install_ref", "Install tag / commit"),
         ]
 
     def _service_actions(self, service_status: str | None = None) -> list[ActionSpec]:
@@ -1709,6 +1711,17 @@ class ManagerTextualApp(App[None]):
                 busy_label=f"{self._t('rebuild', 'Reinstall telemt')}...",
             )
             return
+        if action == "install_ref":
+            current_ref = self.controller.load_settings().telemt_ref
+            self.push_screen(
+                TextInputScreen(
+                    self._t("install_ref_title", "Install telemt ref"),
+                    self._t("install_ref_prompt", "Tag or commit (blank = latest)"),
+                    value=current_ref,
+                ),
+                self._handle_install_ref,
+            )
+            return
         if action == "refresh_config":
             self._run_action(self.controller.run_refresh_proxy_config)
             return
@@ -1917,6 +1930,15 @@ class ManagerTextualApp(App[None]):
                 lambda: self.controller.add_secret(self.state.selected_user or "", result),
                 success_message=f"Secret added for {self.state.selected_user}.",
             )
+
+    def _handle_install_ref(self, result: str | None) -> None:
+        if result is None:
+            return
+        busy_label = f"Installing {result.strip()}..." if result.strip() else "Installing latest telemt..."
+        self._run_action(
+            lambda: self.controller.install_telemt_ref(result),
+            busy_label=busy_label,
+        )
 
     def _handle_settings_screen(self, result: dict[str, str] | None) -> None:
         if not result:
