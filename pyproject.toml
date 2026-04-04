@@ -5,21 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mtp-manager"
 version = "0.1.0"
-description = "MTProxy lifecycle manager for Debian and Ubuntu VPS"
-readme = "README.md"
+description = "Terminal UI manager for telemt on Debian and Ubuntu"
+readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 dependencies = [
   "textual>=8.2.1,<9",
 ]
-keywords = ["mtproxy", "mtproto", "telegram", "systemd", "tui"]
+keywords = ["telemt", "mtproto", "telegram", "systemd", "tui", "fake-tls"]
 classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
-  "Operating System :: POSIX :: Linux",
-  "Environment :: Console",
+  "Programming Language :: Python :: 3.13",
   "Topic :: System :: Systems Administration",
 ]
+
+[project.urls]
+Homepage = "https://github.com/De-Par/mtp-manager"
+Repository = "https://github.com/De-Par/mtp-manager"
+Issues = "https://github.com/De-Par/mtp-manager/issues"
+Backend = "https://github.com/telemt/telemt"
 
 [project.scripts]
 mtp-manager = "app:main"
