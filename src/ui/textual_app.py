@@ -72,7 +72,6 @@ ACTION_LABEL_KEYS = {
     "service_status": "status",
     "service_logs": "logs",
     "service_cleanup": "service_cleanup",
-    "cleanup_runtime": "cleanup_runtime",
     "cleanup_logs": "cleanup_logs",
     "factory_reset": "factory_reset",
     "quit_app": "quit",
@@ -812,26 +811,20 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         margin: 0 1;
     }
 
-    Button.viewer-icon-action {
-        width: 4;
-        min-width: 4;
-        padding: 0;
-    }
-
-    Button.viewer-trash-action {
+    Button.viewer-danger-action {
         background: white;
         color: #a61e4d;
         border: round #f1aeb5;
         text-style: bold;
     }
 
-    Button.viewer-trash-action:hover {
+    Button.viewer-danger-action:hover {
         background: #fff5f5;
         color: #a61e4d;
         border: round #e88997;
     }
 
-    Button.viewer-trash-action:focus {
+    Button.viewer-danger-action:focus {
         background: #e03131;
         color: white;
         border: round #c92a2a;
@@ -876,9 +869,6 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         return_menu: str | None = None,
         clear_before_close: bool = False,
         actions: list[ActionSpec] | None = None,
-        reopen_screen_factory: Callable[[], ModalScreen[str | None]] | None = None,
-        reopen_screen_handler: Callable[[str | None], None] | None = None,
-        result_handler: Callable[[str | None], None] | None = None,
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -886,9 +876,6 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         self.return_menu = return_menu
         self.clear_before_close = clear_before_close
         self.actions = actions or []
-        self.reopen_screen_factory = reopen_screen_factory
-        self.reopen_screen_handler = reopen_screen_handler
-        self.result_handler = result_handler
         self._close_started = False
 
     def compose(self) -> ComposeResult:
@@ -1851,11 +1838,6 @@ class ManagerTextualApp(App[None]):
         self._capture_hardware_snapshot()
         return result
 
-    def _run_logs_cleanup(self) -> str:
-        result = self.controller.cleanup_logs()
-        self._capture_hardware_snapshot()
-        return result
-
     def _run_clear_service_logs(self) -> str:
         result = self.controller.clear_service_logs()
         self._capture_hardware_snapshot()
@@ -1863,10 +1845,10 @@ class ManagerTextualApp(App[None]):
 
     def _service_logs_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("clear_service_logs", self._t("cleanup_logs", "Clear logs"), "error", "viewer-trash-action"),
+            ActionSpec("clear_service_logs", self._t("cleanup_logs", "Clear logs"), "error", "viewer-danger-action"),
         ]
 
-    def _open_service_logs_screen(self, *, return_menu: str | None = None) -> None:
+    def _open_service_logs_screen(self) -> None:
         translated_actions = [
             ActionSpec(item.key, self._action_label(item), item.variant, item.classes)
             for item in self._service_logs_actions()
@@ -1875,20 +1857,13 @@ class ManagerTextualApp(App[None]):
             FullscreenTextScreen(
                 "Service Logs",
                 self.controller.service_logs_text(),
-                return_menu=return_menu,
-                clear_before_close=return_menu is None,
+                clear_before_close=True,
                 actions=translated_actions,
             ),
-            self._handle_fullscreen_result if return_menu else self._handle_service_logs_modal_result,
+            self._handle_service_logs_modal_result,
         )
 
-    def _open_service_status_screen(self, *, return_menu: str | None = None) -> None:
-        if return_menu:
-            self.push_screen(
-                FullscreenTextScreen("Service Status", self.controller.service_status_text(), return_menu=return_menu),
-                self._handle_fullscreen_result,
-            )
-            return
+    def _open_service_status_screen(self) -> None:
         self.push_screen(FullscreenTextScreen("Service Status", self.controller.service_status_text()))
 
     def _handle_service_logs_modal_result(self, result: str | None) -> None:
@@ -2363,12 +2338,6 @@ class ManagerTextualApp(App[None]):
                 busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
             )
             return
-        if action == "cleanup_runtime":
-            self._run_action(self.controller.cleanup_runtime)
-            return
-        if action == "cleanup_logs":
-            self._run_action(self.controller.cleanup_logs)
-            return
         if action == "factory_reset":
             self.push_screen(
                 ConfirmScreen(
@@ -2390,47 +2359,8 @@ class ManagerTextualApp(App[None]):
         if action is None:
             self.call_after_refresh(self._restore_default_focus)
             return
-        if action == "service_status" and menu_name == "service":
-            self.state.output_title = "Activity"
-            self.state.output_body = ""
-            self.run_worker(self.refresh_ui(), exclusive=True)
-            self._open_service_status_screen(return_menu="service")
-            return
-        if action == "service_logs" and menu_name == "service":
-            self.state.output_title = "Activity"
-            self.state.output_body = ""
-            self.run_worker(self.refresh_ui(), exclusive=True)
-            self._open_service_logs_screen(return_menu="service")
-            return
         if action:
             self._handle_ui_action(action)
-
-    def _handle_fullscreen_result(self, result: str | None) -> None:
-        if result == "cleanup_logs":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_logs_cleanup,
-                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
-            )
-            return
-        if result == "clear_service_logs":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_clear_service_logs,
-                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
-            )
-            return
-        if result == "service_cleanup":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_service_cleanup,
-                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
-            )
-            return
-        if result == "service":
-            self.call_after_refresh(self._open_service_menu)
-            return
-        self.call_after_refresh(self._restore_default_focus)
 
     def _open_configure_menu(self) -> None:
         translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._configure_actions()]

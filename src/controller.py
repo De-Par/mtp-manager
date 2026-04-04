@@ -363,15 +363,6 @@ class AppController:
     def service_unit_preview(self) -> str:
         return self.systemd_service.preview().strip() or "No unit preview available."
 
-    def cleanup_runtime(self) -> str:
-        self.cleanup_service.cleanup_runtime()
-        self.cleanup_service.refresh_runtime_snapshot()
-        return "Runtime artifacts cleaned"
-
-    def cleanup_logs(self) -> str:
-        self.cleanup_service.cleanup_logs()
-        return "Logs and package cache cleaned"
-
     def clear_service_logs(self) -> str:
         self.cleanup_service.clear_service_logs()
         return "Service logs cleared."
