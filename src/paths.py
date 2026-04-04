@@ -43,6 +43,10 @@ class ProjectPaths:
         return self.data_dir / "runtime.json"
 
     @property
+    def service_logs_marker_file(self) -> Path:
+        return self.data_dir / "service_logs_since.txt"
+
+    @property
     def secrets_file(self) -> Path:
         return self.conf_dir / "secrets.txt"
 

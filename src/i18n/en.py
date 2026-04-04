@@ -61,6 +61,7 @@ CATALOG = {
     "restart": "Restart",
     "status": "Status",
     "logs": "Logs",
+    "service_cleanup": "Cleanup",
     "unit_preview": "Unit Preview",
     "cleanup_runtime": "Cleanup Runtime",
     "cleanup_logs": "Cleanup Logs",

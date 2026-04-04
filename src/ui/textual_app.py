@@ -71,6 +71,7 @@ ACTION_LABEL_KEYS = {
     "service_restart": "restart",
     "service_status": "status",
     "service_logs": "logs",
+    "service_cleanup": "service_cleanup",
     "cleanup_runtime": "cleanup_runtime",
     "cleanup_logs": "cleanup_logs",
     "factory_reset": "factory_reset",
@@ -114,6 +115,7 @@ class ActionSpec:
     key: str
     label: str
     variant: str = "default"
+    classes: str = ""
 
 
 @dataclass(slots=True)
@@ -525,11 +527,19 @@ class ActionMenuScreen(ModalScreen[str | None]):
         border: round #e0b84d;
     }
 
-    ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
         background: white;
         color: #10231d;
         border: round #95d5b2;
         text-style: bold;
+    }
+
+    ActionMenuScreen.-suppress-initial-highlight Button.dialog-close:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.dialog-close:focus {
+        background: #1f1f1f;
+        color: #f5f5f5;
+        border: round #1f1f1f;
     }
 
     Button.dialog-close {
@@ -577,6 +587,7 @@ class ActionMenuScreen(ModalScreen[str | None]):
                     yield Button("Close", id="cancel", classes="dialog-close")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         button_id = event.button.id or ""
         if button_id == "cancel":
             self.dismiss(None)
@@ -631,6 +642,99 @@ class ActionMenuScreen(ModalScreen[str | None]):
             self.call_after_refresh(self._clear_initial_focus)
 
 
+class ServiceMenuScreen(ModalScreen[str | None]):
+    CSS = ActionMenuScreen.CSS
+    BINDINGS = ActionMenuScreen.BINDINGS
+
+    def __init__(
+        self,
+        title: str,
+        actions: list[ActionSpec],
+        *,
+        open_status: Callable[[], None],
+        open_logs: Callable[[], None],
+    ) -> None:
+        super().__init__()
+        self.title_text = title
+        self.actions = actions
+        self.open_status = open_status
+        self.open_logs = open_logs
+
+    def compose(self) -> ComposeResult:
+        with Container(id="confirm-overlay"):
+            with Container(id="confirm-dialog"):
+                yield Static(format_window_title(self.title_text), classes="dialog-title")
+                with Vertical(classes="menu-actions"):
+                    for action in self.actions:
+                        yield Button(action.label, id=f"menu-{action.key}", variant=action.variant, classes="menu-button")
+                with Horizontal(classes="dialog-actions"):
+                    yield Button("Close", id="cancel", classes="dialog-close")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        button_id = event.button.id or ""
+        if button_id == "cancel":
+            self.dismiss(None)
+            return
+        action = button_id.removeprefix("menu-")
+        if action == "service_status":
+            self._suspend_focus()
+            self.open_status()
+            return
+        if action == "service_logs":
+            self._suspend_focus()
+            self.open_logs()
+            return
+        self.dismiss(action)
+
+    def _menu_buttons(self) -> list[Button]:
+        return [widget for widget in self.query(".menu-button") if isinstance(widget, Button)]
+
+    def _focusable_buttons(self) -> list[Button]:
+        buttons = self._menu_buttons()
+        close_button = self.query_one("#cancel", Button)
+        return [*buttons, close_button]
+
+    def action_focus_next(self) -> None:
+        self.remove_class("-suppress-initial-highlight")
+        buttons = self._focusable_buttons()
+        if not buttons:
+            return
+        focused = self.focused
+        if focused in buttons:
+            index = (buttons.index(focused) + 1) % len(buttons)
+        else:
+            index = 0
+        buttons[index].focus()
+
+    def action_focus_prev(self) -> None:
+        self.remove_class("-suppress-initial-highlight")
+        buttons = self._focusable_buttons()
+        if not buttons:
+            return
+        focused = self.focused
+        if focused in buttons:
+            index = (buttons.index(focused) - 1) % len(buttons)
+        else:
+            index = len(buttons) - 1
+        buttons[index].focus()
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+    def _clear_initial_focus(self) -> None:
+        self.set_focus(None)
+
+    def _suspend_focus(self) -> None:
+        self.add_class("-suppress-initial-highlight")
+        self.set_focus(None)
+
+    def on_mount(self) -> None:
+        self.add_class("-suppress-initial-highlight")
+        self.set_focus(None)
+        self.call_after_refresh(self._clear_initial_focus)
+
+
 class FullscreenTextScreen(ModalScreen[str | None]):
     CSS = """
     ModalScreen {
@@ -680,12 +784,57 @@ class FullscreenTextScreen(ModalScreen[str | None]):
     }
 
     #viewer-actions {
-        align: center middle;
+        width: 1fr;
         height: auto;
+    }
+
+    #viewer-actions-left,
+    #viewer-actions-center,
+    #viewer-actions-right {
+        width: 1fr;
+        height: auto;
+    }
+
+    #viewer-actions-left {
+        align: left middle;
+    }
+
+    #viewer-actions-center {
+        align: center middle;
+    }
+
+    #viewer-actions-right {
+        align: right middle;
     }
 
     #viewer-actions Button {
         width: 18;
+        margin: 0 1;
+    }
+
+    Button.viewer-icon-action {
+        width: 4;
+        min-width: 4;
+        padding: 0;
+    }
+
+    Button.viewer-trash-action {
+        background: white;
+        color: #a61e4d;
+        border: round #f1aeb5;
+        text-style: bold;
+    }
+
+    Button.viewer-trash-action:hover {
+        background: #fff5f5;
+        color: #a61e4d;
+        border: round #e88997;
+    }
+
+    Button.viewer-trash-action:focus {
+        background: #e03131;
+        color: white;
+        border: round #c92a2a;
     }
 
     Button.viewer-close {
@@ -719,12 +868,28 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         ("end", "scroll_end", "End"),
     ]
 
-    def __init__(self, title: str, body: str, *, return_menu: str | None = None, clear_before_close: bool = False) -> None:
+    def __init__(
+        self,
+        title: str,
+        body: str,
+        *,
+        return_menu: str | None = None,
+        clear_before_close: bool = False,
+        actions: list[ActionSpec] | None = None,
+        reopen_screen_factory: Callable[[], ModalScreen[str | None]] | None = None,
+        reopen_screen_handler: Callable[[str | None], None] | None = None,
+        result_handler: Callable[[str | None], None] | None = None,
+    ) -> None:
         super().__init__()
         self.title_text = title
         self.body_text = body
         self.return_menu = return_menu
         self.clear_before_close = clear_before_close
+        self.actions = actions or []
+        self.reopen_screen_factory = reopen_screen_factory
+        self.reopen_screen_handler = reopen_screen_handler
+        self.result_handler = result_handler
+        self._close_started = False
 
     def compose(self) -> ComposeResult:
         with Container(id="viewer-overlay"):
@@ -733,29 +898,41 @@ class FullscreenTextScreen(ModalScreen[str | None]):
                 with VerticalScroll(id="viewer-scroll"):
                     yield Static(self.body_text, id="viewer-body")
                 with Horizontal(id="viewer-actions"):
-                    yield Button("Close", id="close", classes="viewer-close")
+                    with Horizontal(id="viewer-actions-left"):
+                        for action in self.actions:
+                            yield Button(action.label, id=f"viewer-{action.key}", variant=action.variant, classes=action.classes)
+                    with Horizontal(id="viewer-actions-center"):
+                        yield Button("Close", id="close", classes="viewer-close")
+                    yield Static("", id="viewer-actions-right")
 
     def on_mount(self) -> None:
         self.query_one("#viewer-scroll", VerticalScroll).focus()
         self.query_one("#viewer-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "close":
+        button_id = event.button.id or ""
+        if button_id == "close":
             self._close_viewer()
+            return
+        if button_id.startswith("viewer-"):
+            self.dismiss(button_id.removeprefix("viewer-"))
 
     def action_close_viewer(self) -> None:
         self._close_viewer()
 
     def _close_viewer(self) -> None:
+        if self._close_started:
+            return
+        self._close_started = True
         if self.clear_before_close:
             body = self.query_one("#viewer-body", Static)
             body.update("")
             self.body_text = ""
-            self.call_after_refresh(self._dismiss_viewer_later)
+            self.call_after_refresh(self._finalize_close)
             return
-        self.dismiss(self.return_menu)
+        self._finalize_close()
 
-    def _dismiss_viewer_later(self) -> None:
+    def _finalize_close(self) -> None:
         self.dismiss(self.return_menu)
 
     def action_scroll_up(self) -> None:
@@ -1150,6 +1327,7 @@ class ManagerTextualApp(App[None]):
         self._hardware_snapshot: list[tuple[str, object]] = []
         self._dashboard_snapshot: DashboardViewModel | None = None
         self._refresh_ui_scheduled = False
+        self._reopen_screen_after_action: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -1439,6 +1617,7 @@ class ManagerTextualApp(App[None]):
             ActionSpec("service_stop", "Stop"),
             ActionSpec("service_status", "Status"),
             ActionSpec("service_logs", "Logs"),
+            ActionSpec("service_cleanup", "Cleanup", "warning"),
         ]
 
     def _open_screen(self, screen: str, *, push_history: bool = True) -> None:
@@ -1617,6 +1796,66 @@ class ManagerTextualApp(App[None]):
         if not self.is_mounted:
             return
         self._default_focus_target().focus()
+
+    def _run_service_cleanup(self) -> str:
+        result = self.controller.service_cleanup()
+        self._capture_hardware_snapshot()
+        return result
+
+    def _run_logs_cleanup(self) -> str:
+        result = self.controller.cleanup_logs()
+        self._capture_hardware_snapshot()
+        return result
+
+    def _run_clear_service_logs(self) -> str:
+        result = self.controller.clear_service_logs()
+        self._capture_hardware_snapshot()
+        return result
+
+    def _service_logs_actions(self) -> list[ActionSpec]:
+        return [
+            ActionSpec("clear_service_logs", self._t("cleanup_logs", "Clear logs"), "error", "viewer-trash-action"),
+        ]
+
+    def _open_service_logs_screen(self, *, return_menu: str | None = None) -> None:
+        translated_actions = [
+            ActionSpec(item.key, self._action_label(item), item.variant, item.classes)
+            for item in self._service_logs_actions()
+        ]
+        self.push_screen(
+            FullscreenTextScreen(
+                "Service Logs",
+                self.controller.service_logs_text(),
+                return_menu=return_menu,
+                clear_before_close=return_menu is None,
+                actions=translated_actions,
+            ),
+            self._handle_fullscreen_result if return_menu else self._handle_service_logs_modal_result,
+        )
+
+    def _open_service_status_screen(self, *, return_menu: str | None = None) -> None:
+        if return_menu:
+            self.push_screen(
+                FullscreenTextScreen("Service Status", self.controller.service_status_text(), return_menu=return_menu),
+                self._handle_fullscreen_result,
+            )
+            return
+        self.push_screen(FullscreenTextScreen("Service Status", self.controller.service_status_text()))
+
+    def _handle_service_logs_modal_result(self, result: str | None) -> None:
+        if result == "clear_service_logs":
+            self._reopen_screen_after_action = "service_logs"
+            self._run_action(
+                self._run_clear_service_logs,
+                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
+            )
+            return
+        if result == "service_cleanup":
+            self._reopen_screen_after_action = "service_logs"
+            self._run_action(
+                self._run_service_cleanup,
+                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
+            )
 
     async def _refresh_user_selection_view(self, *, refresh_users: bool = False, refresh_secrets: bool = False) -> None:
         self._refresh_selection()
@@ -1807,6 +2046,9 @@ class ManagerTextualApp(App[None]):
             self._notify_result(result.status_message, severity=result.severity)
             self._clear_busy()
             self.run_worker(self.refresh_ui(), exclusive=True)
+            if self._reopen_screen_after_action == "service_logs":
+                self._reopen_screen_after_action = None
+                self.call_after_refresh(self._open_service_logs_screen)
             return
         if event.state == WorkerState.ERROR:
             self._busy_progress = 100
@@ -1816,6 +2058,7 @@ class ManagerTextualApp(App[None]):
             self.state.output_body = ""
             self._notify_result(message, severity="error")
             self._clear_busy()
+            self._reopen_screen_after_action = None
             self.run_worker(self.refresh_ui(), exclusive=True)
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -1888,11 +2131,7 @@ class ManagerTextualApp(App[None]):
             self._open_source_menu()
             return
         if action == "service_menu":
-            translated = [
-                ActionSpec(item.key, self._action_label(item), item.variant)
-                for item in self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
-            ]
-            self.push_screen(ActionMenuScreen(self._t("service_control"), translated), lambda selected: self._handle_action_menu("service", selected))
+            self._open_service_menu()
             return
         if action == "more":
             overflow = list(self._secondary_actions.values())
@@ -2037,18 +2276,18 @@ class ManagerTextualApp(App[None]):
             self.state.output_title = "Activity"
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self.push_screen(
-                FullscreenTextScreen("Service Status", self.controller.service_status_text()),
-                self._handle_fullscreen_result,
-            )
+            self._open_service_status_screen()
             return
         if action == "service_logs":
             self.state.output_title = "Activity"
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self.push_screen(
-                FullscreenTextScreen("Service Logs", self.controller.service_logs_text(), clear_before_close=True),
-                self._handle_fullscreen_result,
+            self._open_service_logs_screen()
+            return
+        if action == "service_cleanup":
+            self._run_action(
+                self._run_service_cleanup,
+                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
             )
             return
         if action == "cleanup_runtime":
@@ -2082,29 +2321,39 @@ class ManagerTextualApp(App[None]):
             self.state.output_title = "Activity"
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self.push_screen(
-                FullscreenTextScreen("Service Status", self.controller.service_status_text(), return_menu="service"),
-                self._handle_fullscreen_result,
-            )
+            self._open_service_status_screen(return_menu="service")
             return
         if action == "service_logs" and menu_name == "service":
             self.state.output_title = "Activity"
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self.push_screen(
-                FullscreenTextScreen(
-                    "Service Logs",
-                    self.controller.service_logs_text(),
-                    return_menu="service",
-                    clear_before_close=True,
-                ),
-                self._handle_fullscreen_result,
-            )
+            self._open_service_logs_screen(return_menu="service")
             return
         if action:
             self._handle_ui_action(action)
 
     def _handle_fullscreen_result(self, result: str | None) -> None:
+        if result == "cleanup_logs":
+            self._reopen_screen_after_action = "service_logs"
+            self._run_action(
+                self._run_logs_cleanup,
+                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
+            )
+            return
+        if result == "clear_service_logs":
+            self._reopen_screen_after_action = "service_logs"
+            self._run_action(
+                self._run_clear_service_logs,
+                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
+            )
+            return
+        if result == "service_cleanup":
+            self._reopen_screen_after_action = "service_logs"
+            self._run_action(
+                self._run_service_cleanup,
+                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
+            )
+            return
         if result == "service":
             self.call_after_refresh(self._open_service_menu)
             return
@@ -2115,8 +2364,25 @@ class ManagerTextualApp(App[None]):
         self.push_screen(ActionMenuScreen(self._t("configure"), translated), lambda selected: self._handle_action_menu("configure", selected))
 
     def _open_service_menu(self) -> None:
-        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._service_actions()]
-        self.push_screen(ActionMenuScreen(self._t("service_control"), translated), lambda selected: self._handle_action_menu("service", selected))
+        self.push_screen(self._build_service_menu_screen(), self._handle_service_menu_result)
+
+    def _build_service_menu_screen(self) -> ServiceMenuScreen:
+        translated = [
+            ActionSpec(item.key, self._action_label(item), item.variant)
+            for item in self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
+        ]
+        return ServiceMenuScreen(
+            self._t("service_control"),
+            translated,
+            open_status=self._open_service_status_screen,
+            open_logs=self._open_service_logs_screen,
+        )
+
+    def _handle_service_menu_result(self, action: str | None) -> None:
+        if action is None:
+            self.call_after_refresh(self._restore_default_focus)
+            return
+        self._handle_ui_action(action)
 
     def _open_source_menu(self) -> None:
         translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._source_actions()]

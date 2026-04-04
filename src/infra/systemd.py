@@ -28,8 +28,11 @@ class SystemdManager:
     def status(self, unit: str) -> str:
         return self.shell.run(["systemctl", "status", unit, "--no-pager", "--full"], check=False).stdout
 
-    def logs(self, unit: str, *, lines: int = 100) -> str:
-        return self.shell.run(["journalctl", "-u", unit, "-n", str(lines), "--no-pager"], check=False).stdout
+    def logs(self, unit: str, *, lines: int = 100, since: str | None = None) -> str:
+        args = ["journalctl", "-u", unit, "-n", str(lines), "--no-pager"]
+        if since:
+            args.extend(["--since", since])
+        return self.shell.run(args, check=False).stdout
 
     def cat(self, unit: str) -> str:
         return self.shell.run(["systemctl", "cat", unit], check=False).stdout

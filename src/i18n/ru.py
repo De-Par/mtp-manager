@@ -61,6 +61,7 @@ CATALOG = {
     "restart": "Перезапустить",
     "status": "Статус",
     "logs": "Логи",
+    "service_cleanup": "Очистка",
     "unit_preview": "Юнит",
     "cleanup_runtime": "Очистить runtime",
     "cleanup_logs": "Очистить логи",

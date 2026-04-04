@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+import time
 
 from infra.storage import JsonStorage
 from infra.systemd import SystemdManager
@@ -20,8 +21,43 @@ class CleanupService:
                 target.unlink()
 
     def cleanup_logs(self) -> None:
-        self.systemd.shell.run(["journalctl", "--vacuum-time=1d", "--vacuum-size=50M"], check=False)
+        self.systemd.shell.run(["journalctl", "--rotate"], check=False)
+        self.systemd.shell.run(["journalctl", "--vacuum-time=1d", "--vacuum-size=25M"], check=False)
+        self.systemd.shell.run(["apt-get", "autoremove", "--purge", "-y"], check=False)
         self.systemd.shell.run(["apt-get", "clean"], check=False)
+        self.systemd.shell.run(["apt-get", "autoclean"], check=False)
+        self.systemd.shell.run(["systemd-tmpfiles", "--clean"], check=False)
+        self.systemd.shell.run(
+            [
+                "sh",
+                "-lc",
+                "find /var/log -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' -o -name '*.journal~' \\) -delete",
+            ],
+            check=False,
+        )
+        self.systemd.shell.run(
+            ["sh", "-lc", "find /tmp /var/tmp -xdev -mindepth 1 -mtime +1 -delete"],
+            check=False,
+        )
+        self.systemd.shell.run(
+            ["sh", "-lc", "rm -rf /var/crash/* /var/lib/apt/lists/* /root/.cache/* /var/cache/man/*"],
+            check=False,
+        )
+        self.systemd.shell.run(["sh", "-lc", "sync && echo 3 > /proc/sys/vm/drop_caches"], check=False)
+
+    def clear_service_logs(self) -> None:
+        self.storage.save_text(self.paths.service_logs_marker_file, f"@{int(time.time()) + 2}\n")
+        self.systemd.shell.run(["journalctl", "--rotate"], check=False)
+        self.systemd.shell.run(["journalctl", "--vacuum-time=1s", "--vacuum-size=1M"], check=False)
+        self.systemd.shell.run(
+            [
+                "sh",
+                "-lc",
+                "find /var/log/journal /run/log/journal -type f \\( -name '*.journal' -o -name '*.journal~' \\) -delete 2>/dev/null || true",
+            ],
+            check=False,
+        )
+        self.systemd.shell.run(["systemctl", "restart", "systemd-journald"], check=False)
 
     def refresh_runtime_snapshot(self) -> None:
         self.storage.save_json(self.paths.runtime_file, {"schema_version": 1, "status": "clean"})

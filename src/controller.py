@@ -355,7 +355,10 @@ class AppController:
         return self.systemd_service.status().strip() or "No status available."
 
     def service_logs_text(self) -> str:
-        return self.systemd_service.logs().strip() or "No logs available."
+        body = self.systemd_service.logs().strip()
+        if not body or body == "-- No entries --":
+            return "No logs available."
+        return body
 
     def service_unit_preview(self) -> str:
         return self.systemd_service.preview().strip() or "No unit preview available."
@@ -368,6 +371,16 @@ class AppController:
     def cleanup_logs(self) -> str:
         self.cleanup_service.cleanup_logs()
         return "Logs and package cache cleaned"
+
+    def clear_service_logs(self) -> str:
+        self.cleanup_service.clear_service_logs()
+        return "Service logs cleared."
+
+    def service_cleanup(self) -> str:
+        self.cleanup_service.cleanup_logs()
+        self.cleanup_service.cleanup_runtime()
+        self.cleanup_service.refresh_runtime_snapshot()
+        return "Cleanup finished: logs, caches, temp files, and mtp-manager artifacts cleaned."
 
     def factory_reset(self, *, remove_swap: bool = False) -> str:
         self.cleanup_service.factory_reset(remove_swap=remove_swap)

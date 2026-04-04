@@ -131,7 +131,11 @@ class SystemdService:
         return self.systemd.status(self._preferred_main_unit())
 
     def logs(self) -> str:
-        return self.systemd.logs(self._preferred_main_unit())
+        since = None
+        if self.paths.service_logs_marker_file.exists():
+            raw_since = self.paths.service_logs_marker_file.read_text(encoding="utf-8").strip()
+            since = raw_since or None
+        return self.systemd.logs(self._preferred_main_unit(), since=since)
 
     def preview(self) -> str:
         return self.systemd.cat(self._preferred_main_unit())
