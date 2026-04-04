@@ -25,6 +25,10 @@
   </a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.png" alt="mtp-manager dashboard screenshot" width="88%">
+</p>
+
 ## Features
 
 - Install and update `telemt`
