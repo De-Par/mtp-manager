@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -12,109 +10,46 @@ from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, HorizontalScroll, Vertical, VerticalScroll
-from textual.screen import ModalScreen
 from textual.widget import MountError
-from textual.widgets import Button, Input, Label, ListItem, ListView, Static
+from textual.widgets import Button, Label, ListItem, ListView, Static
 from textual.worker import Worker, WorkerState
 
 from controller import AppController, DashboardViewModel
 from models.secret import SecretRecord, UserRecord
-from models.settings import AppSettings
+from ui.actions import (
+    action_label,
+    configure_actions,
+    primary_screen_actions,
+    service_actions,
+    source_actions,
+    split_actions,
+    translated_actions,
+)
 from ui.backend import UIBackend
+from ui.dashboard import capture_hardware_snapshot, render_fields, render_status_card
+from ui.lists import (
+    SCREEN_ORDER,
+    normalize_screen,
+    refresh_selection,
+    screen_menu_label,
+    section_values,
+    secret_entries,
+    selected_secret_record,
+    selected_user_record,
+    user_entries,
+)
+from ui.modals import (
+    ActionMenuScreen,
+    ActionSpec,
+    ConfirmScreen,
+    FullscreenTextScreen,
+    ServiceMenuScreen,
+    SettingsScreen,
+    TextInputScreen,
+)
 from ui.state import UIState
 
-SCREEN_ORDER = ["dashboard", "users", "language"]
-SCREEN_LABEL_KEYS = {
-    "dashboard": "dashboard",
-    "users": "users_secrets",
-    "language": "language",
-}
-
-SCREEN_EMOJIS = {
-    "dashboard": "📊",
-    "users": "👥",
-    "language": "🌍",
-}
-
-ACTION_LABEL_KEYS = {
-    "back": "back",
-    "more": "more",
-    "configure_menu": "configure",
-    "service_menu": "service_control",
-    "source_menu": "source",
-    "refresh": "refresh",
-    "setup": "setup",
-    "apply_changes": "apply_changes",
-    "edit_settings": "edit_settings",
-    "show_export": "show_export",
-    "clear_activity": "clear_activity",
-    "initial_setup": "initial_setup",
-    "update_source": "update_source",
-    "rebuild": "rebuild",
-    "install_ref": "install_ref",
-    "reinstall_units": "reinstall_units",
-    "refresh_config": "refresh_config",
-    "refresh_runtime": "refresh_runtime",
-    "add_user": "add_user",
-    "add_secret": "add_secret",
-    "enable_user": "enable_user",
-    "disable_user": "disable_user",
-    "rotate_user": "rotate_user",
-    "delete_user": "delete_user",
-    "enable_secret": "enable_secret",
-    "disable_secret": "disable_secret",
-    "rotate_secret": "rotate_secret",
-    "delete_secret": "delete_secret",
-    "export_to_file": "export_to_file",
-    "service_start": "start",
-    "service_stop": "stop",
-    "service_restart": "restart",
-    "service_status": "status",
-    "service_logs": "logs",
-    "service_cleanup": "service_cleanup",
-    "cleanup_logs": "cleanup_logs",
-    "factory_reset": "factory_reset",
-    "quit_app": "quit",
-    "lang_en": "english",
-    "lang_ru": "russian",
-}
-
-WINDOW_TITLE_EMOJIS = {
-    "actions": "⚡",
-    "configure": "🔩",
-    "source": "📦",
-    "settings": "🔩",
-    "edit settings": "🔩",
-    "service": "🔧",
-    "service control": "🔧",
-    "service logs": "📜",
-    "add user": "👤",
-    "add secret": "🔐",
-    "delete user": "🗑️",
-    "delete secret": "🗑️",
-    "factory reset": "🚨",
-    "export": "📤",
-}
-
 BUSY_FRAMES = ("⏳", "⌛")
-
-
-def format_window_title(title: str) -> str:
-    title = title.strip()
-    if not title:
-        return title
-    if title[0] in "⚡⚙🛠📜👤🔐🗑🚨📤📈":
-        return title
-    emoji = WINDOW_TITLE_EMOJIS.get(title.casefold(), "✨")
-    return f"{emoji} {title}"
-
-
-@dataclass(slots=True)
-class ActionSpec:
-    key: str
-    label: str
-    variant: str = "default"
-    classes: str = ""
 
 
 @dataclass(slots=True)
@@ -154,792 +89,6 @@ class SplitHandle(Static):
             self._dragging = False
             self.release_mouse()
             event.stop()
-
-
-class ConfirmScreen(ModalScreen[bool]):
-    CSS = """
-    ModalScreen {
-        background: #f4fbf6;
-    }
-
-    #confirm-overlay {
-        width: 1fr;
-        height: 1fr;
-        align: center middle;
-    }
-
-    #confirm-dialog {
-        width: 56;
-        max-width: 72;
-        min-width: 42;
-        height: auto;
-        background: white;
-        border: round #74c69d;
-        padding: 1 2;
-    }
-
-    .dialog-title {
-        width: 1fr;
-        content-align: center middle;
-        text-style: bold;
-        color: #2d6a4f;
-        margin: 0 0 1 0;
-    }
-
-    .dialog-actions {
-        align: center middle;
-        margin-top: 1;
-        height: auto;
-    }
-
-    .dialog-actions Button {
-        width: 16;
-        margin: 0 1;
-    }
-
-    .dialog-actions Button.-success {
-        background: white;
-        color: #1b4332;
-        border: round #74c69d;
-        text-style: bold;
-    }
-
-    .dialog-actions Button.-success:hover {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
-    }
-
-    .dialog-actions Button.-success:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
-    }
-
-    .dialog-actions Button.-success:hover:focus {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
-    }
-
-    .dialog-actions Button.-error {
-        background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
-        text-style: bold;
-    }
-
-    .dialog-actions Button.-error:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    .dialog-actions Button.-error:focus {
-        background: #e03131;
-        color: white;
-        border: round #c92a2a;
-    }
-
-    .dialog-actions Button.-error:hover:focus {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    .dialog-actions Button.-warning {
-        background: white;
-        color: #7c5c00;
-        border: round #e9c46a;
-        text-style: bold;
-    }
-
-    .dialog-actions Button.-warning:hover {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    .dialog-actions Button.-warning:focus {
-        background: #e9c46a;
-        color: #523d00;
-        border: round #c99a1d;
-    }
-
-    .dialog-actions Button.-warning:hover:focus {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    .dialog-message-center {
-        width: 1fr;
-        content-align: center middle;
-        text-align: center;
-    }
-    """
-
-    def __init__(
-        self,
-        title: str,
-        message: str,
-        confirm_label: str = "Confirm",
-        *,
-        confirm_variant: str = "success",
-        center_message: bool = False,
-    ) -> None:
-        super().__init__()
-        self.title_text = title
-        self.message_text = message
-        self.confirm_label = confirm_label
-        self.confirm_variant = confirm_variant
-        self.center_message = center_message
-
-    def compose(self) -> ComposeResult:
-        with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
-                yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.message_text, classes="dialog-message-center" if self.center_message else "")
-                with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
-                    yield Button(self.confirm_label, id="confirm", variant=self.confirm_variant)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "confirm")
-
-    def on_mount(self) -> None:
-        self.set_focus(None)
-
-
-class TextInputScreen(ModalScreen[str | None]):
-    CSS = ConfirmScreen.CSS + """
-    Input {
-        margin-top: 1;
-        margin-bottom: 1;
-    }
-    """
-
-    def __init__(self, title: str, label: str, *, value: str = "", password: bool = False) -> None:
-        super().__init__()
-        self.title_text = title
-        self.label_text = label
-        self.initial_value = value
-        self.password = password
-
-    def compose(self) -> ComposeResult:
-        with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
-                yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.label_text)
-                yield Input(value=self.initial_value, password=self.password, id="value")
-                with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
-                    yield Button("Save", id="save", variant="success")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel":
-            self.dismiss(None)
-            return
-        self.dismiss(self.query_one("#value", Input).value.strip())
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "value":
-            self.dismiss(event.value.strip())
-
-    def on_mount(self) -> None:
-        self.query_one("#value", Input).focus()
-
-
-class SettingsScreen(ModalScreen[dict[str, str] | None]):
-    CSS = ConfirmScreen.CSS + """
-    .field-label {
-        color: #52796f;
-        margin-top: 1;
-        margin-bottom: 0;
-    }
-
-    Input {
-        margin-top: 0;
-        margin-bottom: 1;
-        background: #ffffff;
-        color: #081c15;
-        border: round #b7e4c7;
-    }
-
-    Input:focus {
-        border: round #74c69d;
-    }
-    """
-
-    def __init__(self, settings: AppSettings) -> None:
-        super().__init__()
-        self.settings = settings
-
-    def compose(self) -> ComposeResult:
-        with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
-                yield Static(format_window_title("Edit Settings"), classes="dialog-title")
-                yield Static("Proxy port", classes="field-label")
-                yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
-                yield Static("API port", classes="field-label")
-                yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
-                yield Static("Workers (compat)", classes="field-label")
-                yield Input(str(self.settings.workers), id="workers", type="integer")
-                yield Static("Fake TLS domain", classes="field-label")
-                yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
-                yield Static("Ad tag", classes="field-label")
-                yield Input(self.settings.ad_tag, id="ad_tag")
-                with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
-                    yield Button("Save", id="save", variant="success")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel":
-            self.dismiss(None)
-            return
-        self.dismiss(
-            {
-                "mt_port": self.query_one("#mt_port", Input).value.strip(),
-                "stats_port": self.query_one("#stats_port", Input).value.strip(),
-                "workers": self.query_one("#workers", Input).value.strip(),
-                "fake_tls_domain": self.query_one("#fake_tls_domain", Input).value.strip(),
-                "ad_tag": self.query_one("#ad_tag", Input).value.strip(),
-            }
-        )
-
-    def on_mount(self) -> None:
-        self.query_one("#mt_port", Input).focus()
-
-
-class ActionMenuScreen(ModalScreen[str | None]):
-    CSS = ConfirmScreen.CSS + """
-    #confirm-dialog {
-        width: 56;
-        max-width: 68;
-    }
-
-    .menu-actions {
-        height: auto;
-        margin-top: 1;
-        align: center top;
-    }
-
-    .menu-button {
-        width: 28;
-        margin-bottom: 1;
-        background: white;
-        color: #081c15;
-        border: round #95d5b2;
-        text-style: bold;
-    }
-
-    Button.menu-button:hover {
-        background: #f4fbf6;
-        color: #081c15;
-        border: round #74c69d;
-        text-style: bold;
-    }
-
-    Button.menu-button:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
-        text-style: bold;
-    }
-
-    Button.menu-button:hover:focus {
-        background: #f4fbf6;
-        color: #081c15;
-        border: round #74c69d;
-        text-style: bold;
-    }
-
-    Button.menu-button.-success {
-        background: white;
-        color: #1b4332;
-        border: round #74c69d;
-    }
-
-    Button.menu-button.-success:hover {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
-    }
-
-    Button.menu-button.-success:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
-    }
-
-    Button.menu-button.-success:hover:focus {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
-    }
-
-    Button.menu-button.-error {
-        background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
-    }
-
-    Button.menu-button.-error:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    Button.menu-button.-error:focus {
-        background: #e03131;
-        color: white;
-        border: round #c92a2a;
-    }
-
-    Button.menu-button.-error:hover:focus {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    Button.menu-button.-warning {
-        background: white;
-        color: #7c5c00;
-        border: round #e9c46a;
-    }
-
-    Button.menu-button.-warning:hover {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    Button.menu-button.-warning:focus {
-        background: #e9c46a;
-        color: #523d00;
-        border: round #c99a1d;
-    }
-
-    Button.menu-button.-warning:hover:focus {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
-        background: white;
-        color: #10231d;
-        border: round #95d5b2;
-        text-style: bold;
-    }
-
-    ActionMenuScreen.-suppress-initial-highlight Button.dialog-close:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.dialog-close:focus {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
-    }
-
-    Button.dialog-close {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
-        text-style: bold;
-    }
-
-    Button.dialog-close:hover {
-        background: #2b2b2b;
-        border: round #2b2b2b;
-        color: white;
-    }
-
-    Button.dialog-close:focus {
-        background: #1f1f1f;
-        color: white;
-        border: round #5a5a5a;
-    }
-    """
-
-    BINDINGS = [
-        ("up", "focus_prev", "Previous"),
-        ("down", "focus_next", "Next"),
-        ("tab", "focus_next", "Next"),
-        ("shift+tab", "focus_prev", "Previous"),
-        ("escape", "dismiss_none", "Close"),
-    ]
-
-    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = False) -> None:
-        super().__init__()
-        self.title_text = title
-        self.actions = actions
-        self.auto_focus_first = auto_focus_first
-
-    def compose(self) -> ComposeResult:
-        with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
-                yield Static(format_window_title(self.title_text), classes="dialog-title")
-                with Vertical(classes="menu-actions"):
-                    for action in self.actions:
-                        yield Button(action.label, id=f"menu-{action.key}", variant=action.variant, classes="menu-button")
-                with Horizontal(classes="dialog-actions"):
-                    yield Button("Close", id="cancel", classes="dialog-close")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        button_id = event.button.id or ""
-        if button_id == "cancel":
-            self.dismiss(None)
-            return
-        self.dismiss(button_id.removeprefix("menu-"))
-
-    def _menu_buttons(self) -> list[Button]:
-        return [widget for widget in self.query(".menu-button") if isinstance(widget, Button)]
-
-    def _focusable_buttons(self) -> list[Button]:
-        buttons = self._menu_buttons()
-        close_button = self.query_one("#cancel", Button)
-        return [*buttons, close_button]
-
-    def action_focus_next(self) -> None:
-        self.remove_class("-suppress-initial-highlight")
-        buttons = self._focusable_buttons()
-        if not buttons:
-            return
-        focused = self.focused
-        if focused in buttons:
-            index = (buttons.index(focused) + 1) % len(buttons)
-        else:
-            index = 0
-        buttons[index].focus()
-
-    def action_focus_prev(self) -> None:
-        self.remove_class("-suppress-initial-highlight")
-        buttons = self._focusable_buttons()
-        if not buttons:
-            return
-        focused = self.focused
-        if focused in buttons:
-            index = (buttons.index(focused) - 1) % len(buttons)
-        else:
-            index = len(buttons) - 1
-        buttons[index].focus()
-
-    def action_dismiss_none(self) -> None:
-        self.dismiss(None)
-
-    def _clear_initial_focus(self) -> None:
-        self.set_focus(None)
-
-    def on_mount(self) -> None:
-        if self.auto_focus_first:
-            buttons = self._focusable_buttons()
-            if buttons:
-                buttons[0].focus()
-        else:
-            self.add_class("-suppress-initial-highlight")
-            self.call_after_refresh(self._clear_initial_focus)
-
-
-class ServiceMenuScreen(ModalScreen[str | None]):
-    CSS = ActionMenuScreen.CSS
-    BINDINGS = ActionMenuScreen.BINDINGS
-
-    def __init__(
-        self,
-        title: str,
-        actions: list[ActionSpec],
-        *,
-        open_status: Callable[[], None],
-        open_logs: Callable[[], None],
-    ) -> None:
-        super().__init__()
-        self.title_text = title
-        self.actions = actions
-        self.open_status = open_status
-        self.open_logs = open_logs
-
-    def compose(self) -> ComposeResult:
-        with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
-                yield Static(format_window_title(self.title_text), classes="dialog-title")
-                with Vertical(classes="menu-actions"):
-                    for action in self.actions:
-                        yield Button(action.label, id=f"menu-{action.key}", variant=action.variant, classes="menu-button")
-                with Horizontal(classes="dialog-actions"):
-                    yield Button("Close", id="cancel", classes="dialog-close")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        button_id = event.button.id or ""
-        if button_id == "cancel":
-            self.dismiss(None)
-            return
-        action = button_id.removeprefix("menu-")
-        if action == "service_status":
-            self._suspend_focus()
-            self.open_status()
-            return
-        if action == "service_logs":
-            self._suspend_focus()
-            self.open_logs()
-            return
-        self.dismiss(action)
-
-    def _menu_buttons(self) -> list[Button]:
-        return [widget for widget in self.query(".menu-button") if isinstance(widget, Button)]
-
-    def _focusable_buttons(self) -> list[Button]:
-        buttons = self._menu_buttons()
-        close_button = self.query_one("#cancel", Button)
-        return [*buttons, close_button]
-
-    def action_focus_next(self) -> None:
-        self.remove_class("-suppress-initial-highlight")
-        buttons = self._focusable_buttons()
-        if not buttons:
-            return
-        focused = self.focused
-        if focused in buttons:
-            index = (buttons.index(focused) + 1) % len(buttons)
-        else:
-            index = 0
-        buttons[index].focus()
-
-    def action_focus_prev(self) -> None:
-        self.remove_class("-suppress-initial-highlight")
-        buttons = self._focusable_buttons()
-        if not buttons:
-            return
-        focused = self.focused
-        if focused in buttons:
-            index = (buttons.index(focused) - 1) % len(buttons)
-        else:
-            index = len(buttons) - 1
-        buttons[index].focus()
-
-    def action_dismiss_none(self) -> None:
-        self.dismiss(None)
-
-    def _clear_initial_focus(self) -> None:
-        self.set_focus(None)
-
-    def _suspend_focus(self) -> None:
-        self.add_class("-suppress-initial-highlight")
-        self.set_focus(None)
-
-    def on_mount(self) -> None:
-        self.add_class("-suppress-initial-highlight")
-        self.set_focus(None)
-        self.call_after_refresh(self._clear_initial_focus)
-
-
-class FullscreenTextScreen(ModalScreen[str | None]):
-    CSS = """
-    ModalScreen {
-        background: #f4fbf6;
-    }
-
-    #viewer-overlay {
-        width: 1fr;
-        height: 1fr;
-        align: center middle;
-    }
-
-    #viewer-dialog {
-        width: 1fr;
-        height: 1fr;
-        margin: 1 2;
-        background: white;
-        border: round #74c69d;
-        padding: 1 2;
-    }
-
-    #viewer-title {
-        width: 1fr;
-        content-align: center middle;
-        color: #2d6a4f;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-
-    #viewer-scroll {
-        height: 1fr;
-        border: round #d7ebe0;
-        padding: 0 1;
-        margin-bottom: 1;
-        scrollbar-color: #8fd3ac;
-        scrollbar-color-hover: #74c69d;
-        scrollbar-color-active: #2d6a4f;
-        scrollbar-background: #f8fcf9;
-        scrollbar-background-hover: #f1f8f3;
-        scrollbar-background-active: #e7f4ea;
-        scrollbar-size-vertical: 1;
-        scrollbar-size-horizontal: 1;
-    }
-
-    #viewer-body {
-        color: #081c15;
-    }
-
-    #viewer-actions {
-        width: 1fr;
-        height: auto;
-    }
-
-    #viewer-actions-left,
-    #viewer-actions-center,
-    #viewer-actions-right {
-        width: 1fr;
-        height: auto;
-    }
-
-    #viewer-actions-left {
-        align: left middle;
-    }
-
-    #viewer-actions-center {
-        align: center middle;
-    }
-
-    #viewer-actions-right {
-        align: right middle;
-    }
-
-    #viewer-actions Button {
-        width: 18;
-        margin: 0 1;
-    }
-
-    Button.viewer-danger-action {
-        background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
-        text-style: bold;
-    }
-
-    Button.viewer-danger-action:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    Button.viewer-danger-action:focus {
-        background: #e03131;
-        color: white;
-        border: round #c92a2a;
-    }
-
-    Button.viewer-close {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
-        text-style: bold;
-    }
-
-    Button.viewer-close:hover {
-        background: #2b2b2b;
-        color: white;
-        border: round #2b2b2b;
-    }
-
-    Button.viewer-close:focus {
-        background: #1f1f1f;
-        color: white;
-        border: round #5a5a5a;
-    }
-    """
-
-    BINDINGS = [
-        ("escape", "close_viewer", "Close"),
-        ("q", "close_viewer", "Close"),
-        ("up", "scroll_up", "Up"),
-        ("down", "scroll_down", "Down"),
-        ("pageup", "page_up", "PageUp"),
-        ("pagedown", "page_down", "PageDown"),
-        ("home", "scroll_home", "Home"),
-        ("end", "scroll_end", "End"),
-    ]
-
-    def __init__(
-        self,
-        title: str,
-        body: str,
-        *,
-        return_menu: str | None = None,
-        clear_before_close: bool = False,
-        actions: list[ActionSpec] | None = None,
-    ) -> None:
-        super().__init__()
-        self.title_text = title
-        self.body_text = body
-        self.return_menu = return_menu
-        self.clear_before_close = clear_before_close
-        self.actions = actions or []
-        self._close_started = False
-
-    def compose(self) -> ComposeResult:
-        with Container(id="viewer-overlay"):
-            with Container(id="viewer-dialog"):
-                yield Static(format_window_title(self.title_text), id="viewer-title")
-                with VerticalScroll(id="viewer-scroll"):
-                    yield Static(self.body_text, id="viewer-body")
-                with Horizontal(id="viewer-actions"):
-                    with Horizontal(id="viewer-actions-left"):
-                        for action in self.actions:
-                            yield Button(action.label, id=f"viewer-{action.key}", variant=action.variant, classes=action.classes)
-                    with Horizontal(id="viewer-actions-center"):
-                        yield Button("Close", id="close", classes="viewer-close")
-                    yield Static("", id="viewer-actions-right")
-
-    def on_mount(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).focus()
-        self.query_one("#viewer-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id or ""
-        if button_id == "close":
-            self._close_viewer()
-            return
-        if button_id.startswith("viewer-"):
-            self.dismiss(button_id.removeprefix("viewer-"))
-
-    def action_close_viewer(self) -> None:
-        self._close_viewer()
-
-    def _close_viewer(self) -> None:
-        if self._close_started:
-            return
-        self._close_started = True
-        if self.clear_before_close:
-            body = self.query_one("#viewer-body", Static)
-            body.update("")
-            self.body_text = ""
-            self.call_after_refresh(self._finalize_close)
-            return
-        self._finalize_close()
-
-    def _finalize_close(self) -> None:
-        self.dismiss(self.return_menu)
-
-    def action_scroll_up(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).action_scroll_up()
-
-    def action_scroll_down(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).action_scroll_down()
-
-    def action_page_up(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).scroll_to(y=max(0, self.query_one("#viewer-scroll", VerticalScroll).scroll_y - 10), animate=False, immediate=True)
-
-    def action_page_down(self) -> None:
-        scroll = self.query_one("#viewer-scroll", VerticalScroll)
-        scroll.scroll_to(y=scroll.scroll_y + 10, animate=False, immediate=True)
-
-    def action_scroll_home(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
-
-    def action_scroll_end(self) -> None:
-        self.query_one("#viewer-scroll", VerticalScroll).action_scroll_end()
 
 
 class ManagerTextualApp(App[None]):
@@ -1325,8 +474,6 @@ class ManagerTextualApp(App[None]):
         ("j", "next_secret", "Next secret"),
         ("k", "prev_secret", "Prev secret"),
     ]
-    PRIMARY_ACTION_LIMIT = 6
-
     def __init__(self, controller: AppController) -> None:
         super().__init__()
         self.controller = controller
@@ -1446,173 +593,11 @@ class ManagerTextualApp(App[None]):
         translated = self.controller.translator.tr(key)
         return default if default is not None and translated == key else translated
 
-    def _normalize_screen(self, screen: str) -> str:
-        return "dashboard" if screen in {"setup", "service", "maintenance", "reports"} else screen
-
-    def _screen_label(self, screen: str) -> str:
-        return self._t(SCREEN_LABEL_KEYS.get(screen, screen), screen)
-
     def _screen_menu_label(self, screen: str) -> str:
-        return f"{SCREEN_EMOJIS.get(screen, '•')} {self._screen_label(screen)}"
-
-    def _render_fields(self, body: str) -> Text:
-        text = Text()
-        for raw_line in body.splitlines():
-            line = raw_line.rstrip()
-            if not line:
-                text.append("\n")
-                continue
-            if ": " in line:
-                label, value = line.split(": ", 1)
-                text.append(f"{label}: ", style="bold #1b4332")
-                text.append(value)
-            elif line.startswith("- "):
-                text.append(line)
-            else:
-                text.append(line, style="bold #2d6a4f")
-            text.append("\n")
-        return text
-
-    def _format_bytes(self, value: int) -> str:
-        units = ["B", "KB", "MB", "GB", "TB"]
-        size = float(value)
-        for unit in units:
-            if size < 1024 or unit == units[-1]:
-                if unit in {"B", "KB"}:
-                    return f"{int(size)} {unit}"
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{value} B"
-
-    def _usage_percent_style(self, percent: float) -> str:
-        if percent >= 90:
-            return "bold #e03131"
-        if percent >= 75:
-            return "bold #f76707"
-        if percent >= 50:
-            return "bold #ffd43b"
-        return "bold #37b24d"
-
-    def _usage_metric_text(self, used: int, total: int) -> Text:
-        percent = (used / total * 100) if total > 0 else 0.0
-        text = Text()
-        text.append(f"{self._format_bytes(used)} / {self._format_bytes(total)} ")
-        text.append(f"{percent:.0f}%", style=self._usage_percent_style(percent))
-        return text
-
-    def _meminfo_values(self) -> dict[str, int]:
-        values: dict[str, int] = {}
-        try:
-            with open("/proc/meminfo", "r", encoding="utf-8") as handle:
-                for raw_line in handle:
-                    if ":" not in raw_line:
-                        continue
-                    key, raw_value = raw_line.split(":", 1)
-                    parts = raw_value.strip().split()
-                    if not parts:
-                        continue
-                    amount = int(parts[0])
-                    unit = parts[1].lower() if len(parts) > 1 else ""
-                    values[key] = amount * 1024 if unit == "kb" else amount
-        except OSError:
-            return {}
-        return values
+        return screen_menu_label(screen, self._t)
 
     def _capture_hardware_snapshot(self) -> None:
-        snapshot: list[tuple[str, object]] = []
-        meminfo = self._meminfo_values()
-        ram_total = meminfo.get("MemTotal", 0)
-        ram_free = meminfo.get("MemAvailable", 0)
-        if ram_total:
-            ram_used = max(0, ram_total - ram_free)
-            snapshot.extend(
-                [
-                    ("", ""),
-                    ("RAM", self._usage_metric_text(ram_used, ram_total)),
-                ]
-            )
-            swap_total = meminfo.get("SwapTotal", 0)
-            swap_free = meminfo.get("SwapFree", 0)
-            if swap_total > 0:
-                swap_used = max(0, swap_total - swap_free)
-                snapshot.append(("Swap", self._usage_metric_text(swap_used, swap_total)))
-        try:
-            disk = shutil.disk_usage("/")
-        except OSError:
-            disk = None
-        if disk is not None:
-            if not snapshot:
-                snapshot.append(("", ""))
-            snapshot.extend(
-                [
-                    ("Disk", self._usage_metric_text(disk.used, disk.total)),
-                ]
-            )
-        cpu_count = os.cpu_count()
-        if cpu_count:
-            if not snapshot:
-                snapshot.append(("", ""))
-            snapshot.append(("CPU cores", str(cpu_count)))
-        self._hardware_snapshot = snapshot
-
-    def _status_metrics(self, dashboard: DashboardViewModel | None = None) -> list[tuple[str, object]]:
-        dashboard = dashboard or self._dashboard_snapshot or self.controller.dashboard()
-        metrics = [
-            (self._t("service_status"), dashboard.service_status),
-            (self._t("public_ip"), dashboard.public_ip),
-            ("telemt version", dashboard.telemt_version),
-            ("Proxy port", str(dashboard.mt_port)),
-            ("API port", str(dashboard.stats_port)),
-            (self._t("fake_tls"), dashboard.fake_tls_domain or "disabled"),
-            (self._t("users_count"), str(dashboard.users_count)),
-            (self._t("secrets_count"), str(dashboard.secrets_count)),
-        ]
-        return [*metrics, *self._hardware_snapshot]
-
-    def _status_indicator(self, value: str) -> Text:
-        state = value.lower()
-        indicator = "🟢" if state == "active" else "🟡" if state in {"activating", "reloading"} else "🔴"
-        text = Text()
-        text.append(f"{indicator} ", style="bold")
-        text.append(value)
-        return text
-
-    def _render_status_card(self, dashboard: DashboardViewModel | None = None) -> Text:
-        metrics = self._status_metrics(dashboard)
-        label_width = max((cell_len(label) for label, _ in metrics if label), default=12) + 2
-        text = Text()
-        for label, value in metrics:
-            if not label and not value:
-                text.append("\n")
-                continue
-            line = Text()
-            line.append(" ")
-            line.append(label.ljust(label_width), style="bold #1b4332")
-            line.append(" : ", style="bold #1b4332")
-            if label == self._t("service_status") and isinstance(value, str):
-                value_renderable = self._status_indicator(value)
-            elif isinstance(value, Text):
-                value_renderable = value
-            else:
-                value_renderable = Text(str(value))
-            line.append_text(value_renderable)
-            line.append("\n")
-            text.append_text(line)
-        return text
-
-    def _action_label(self, action: ActionSpec) -> str:
-        key = ACTION_LABEL_KEYS.get(action.key)
-        if key is None:
-            return action.label
-        return self._t(key, action.label)
-
-    def _split_actions(self, actions: list[ActionSpec]) -> tuple[list[ActionSpec], list[ActionSpec]]:
-        if len(actions) <= self.PRIMARY_ACTION_LIMIT:
-            return actions, []
-        primary = actions[: self.PRIMARY_ACTION_LIMIT - 1]
-        secondary = actions[self.PRIMARY_ACTION_LIMIT - 1 :]
-        primary.append(ActionSpec("more", "More"))
-        return primary, secondary
+        self._hardware_snapshot = capture_hardware_snapshot()
 
     def _update_topbar(self) -> None:
         header = Text()
@@ -1620,34 +605,18 @@ class ManagerTextualApp(App[None]):
         self.query_one("#topbar-title", Static).update(header)
 
     def _configure_actions(self) -> list[ActionSpec]:
-        return [
-            ActionSpec("edit_settings", "Edit Settings"),
-            ActionSpec("setup", "Setup", "success"),
-            ActionSpec("apply_changes", "Apply Changes"),
-            ActionSpec("source_menu", "Binary"),
-            ActionSpec("factory_reset", "Factory Reset", "error"),
-        ]
+        return configure_actions()
 
     def _source_actions(self) -> list[ActionSpec]:
-        return [
-            ActionSpec("update_source", "Update telemt"),
-            ActionSpec("rebuild", "Reinstall telemt"),
-            ActionSpec("install_ref", "Install tag / commit"),
-        ]
+        return source_actions()
 
     def _service_actions(self, service_status: str | None = None) -> list[ActionSpec]:
         status = service_status or (self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
         service_active = (status or self.controller.dashboard().service_status).lower() == "active"
-        return [
-            ActionSpec("service_restart" if service_active else "service_start", "Restart" if service_active else "Start"),
-            ActionSpec("service_stop", "Stop"),
-            ActionSpec("service_status", "Status"),
-            ActionSpec("service_logs", "Logs"),
-            ActionSpec("service_cleanup", "Cleanup", "warning"),
-        ]
+        return service_actions(service_active)
 
     def _open_screen(self, screen: str, *, push_history: bool = True) -> None:
-        screen = self._normalize_screen(screen)
+        screen = normalize_screen(screen)
         if screen == self.state.current_screen:
             return
         if push_history:
@@ -1655,36 +624,18 @@ class ManagerTextualApp(App[None]):
         self.state.current_screen = screen
 
     def _get_selected_user(self) -> UserRecord | None:
-        for user in self.users_snapshot:
-            if user.name == self.state.selected_user:
-                return user
-        return None
+        return selected_user_record(self.users_snapshot, self.state.selected_user)
 
     def _get_selected_secret(self, user: UserRecord | None = None) -> SecretRecord | None:
-        owner = user or self._get_selected_user()
-        if owner is None:
-            return None
-        for secret in owner.secrets:
-            if secret.id == self.state.selected_secret_id:
-                return secret
-        return None
+        return selected_secret_record(user or self._get_selected_user(), self.state.selected_secret_id)
 
     def _refresh_selection(self) -> None:
         self.users_snapshot = self.controller.list_users()
-        names = [user.name for user in self.users_snapshot]
-        if not names:
-            self.state.selected_user = None
-            self.state.selected_secret_id = None
-            return
-        if self.state.selected_user not in names:
-            self.state.selected_user = names[0]
-        user = self._get_selected_user()
-        if user is None or not user.secrets:
-            self.state.selected_secret_id = None
-            return
-        secret_ids = [secret.id for secret in user.secrets]
-        if self.state.selected_secret_id not in secret_ids:
-            self.state.selected_secret_id = secret_ids[0]
+        self.state.selected_user, self.state.selected_secret_id = refresh_selection(
+            self.users_snapshot,
+            self.state.selected_user,
+            self.state.selected_secret_id,
+        )
 
     async def _replace_list(self, list_id: str, items: list[ValueListItem], selected_index: int | None = 0) -> bool:
         list_view = self.query_one(f"#{list_id}", ListView)
@@ -1716,11 +667,11 @@ class ManagerTextualApp(App[None]):
             await container.remove_children()
         except MountError:
             return False
-        primary_actions, secondary_actions = self._split_actions(actions)
+        primary_actions, secondary_actions = split_actions(actions)
         self._secondary_actions = {action.key: action for action in secondary_actions}
         buttons = [
             Button(
-                self._action_label(action),
+                action_label(action, self._t),
                 id=f"action-{action.key}",
                 variant=action.variant,
                 classes="action-button",
@@ -1753,12 +704,6 @@ class ManagerTextualApp(App[None]):
                 return "No users yet.\n\n" + self._t("use_actions_users")
             return self.controller.selected_detail_text(self.state.selected_user, self.state.selected_secret_id)
         return self._t("service_dashboard_controls")
-
-    def _build_status_text(self) -> str:
-        lines = [f"{label}: {value}" for label, value in self._status_metrics()]
-        if self.state.status_message:
-            lines.extend(["", self.state.status_message])
-        return "\n".join(lines)
 
     def _render_busy_bar(self, progress: float) -> Text:
         width = 18
@@ -1831,7 +776,7 @@ class ManagerTextualApp(App[None]):
         self._default_focus_target().focus()
 
     def _on_main_workspace(self) -> bool:
-        return self._normalize_screen(self.state.current_screen) in SCREEN_ORDER
+        return normalize_screen(self.state.current_screen) in SCREEN_ORDER
 
     def _run_service_cleanup(self) -> str:
         result = self.controller.service_cleanup()
@@ -1849,16 +794,12 @@ class ManagerTextualApp(App[None]):
         ]
 
     def _open_service_logs_screen(self) -> None:
-        translated_actions = [
-            ActionSpec(item.key, self._action_label(item), item.variant, item.classes)
-            for item in self._service_logs_actions()
-        ]
         self.push_screen(
             FullscreenTextScreen(
                 "Service Logs",
                 self.controller.service_logs_text(),
                 clear_before_close=True,
-                actions=translated_actions,
+                actions=translated_actions(self._service_logs_actions(), self._t),
             ),
             self._handle_service_logs_modal_result,
         )
@@ -1883,7 +824,7 @@ class ManagerTextualApp(App[None]):
 
     async def _refresh_user_selection_view(self, *, refresh_users: bool = False, refresh_secrets: bool = False) -> None:
         self._refresh_selection()
-        self.query_one("#overview-content", Static).update(self._render_fields(self._build_overview_text()))
+        self.query_one("#overview-content", Static).update(render_fields(self._build_overview_text()))
         self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
         if refresh_users:
             user_items, user_index = self._user_items()
@@ -1893,57 +834,22 @@ class ManagerTextualApp(App[None]):
             await self._replace_list("secrets-list", secret_items, secret_index)
 
     def _section_items(self) -> tuple[list[ValueListItem], int]:
-        items = [ValueListItem(name, self._screen_menu_label(name)) for name in SCREEN_ORDER]
-        return items, SCREEN_ORDER.index(self.state.current_screen)
+        values, index = section_values(self.state.current_screen)
+        items = [ValueListItem(name, self._screen_menu_label(name)) for name in values]
+        return items, index
 
     def _user_items(self) -> tuple[list[ValueListItem], int | None]:
-        items = [ValueListItem(user.name, f"{user.name} [{'on' if user.enabled else 'off'}]") for user in self.users_snapshot]
-        names = [user.name for user in self.users_snapshot]
-        index = names.index(self.state.selected_user) if self.state.selected_user in names else None
+        entries, index = user_entries(self.users_snapshot, self.state.selected_user)
+        items = [ValueListItem(value, label) for value, label in entries]
         return items, index
 
     def _secret_items(self) -> tuple[list[ValueListItem], int | None]:
-        selected_user = self._get_selected_user()
-        if selected_user is None:
-            return [], None
-        items = [ValueListItem(secret.id, f"#{secret.id} {secret.note or '-'}") for secret in selected_user.secrets]
-        ids = [secret.id for secret in selected_user.secrets]
-        index = ids.index(self.state.selected_secret_id) if self.state.selected_secret_id in ids else None
+        entries, index = secret_entries(self._get_selected_user(), self.state.selected_secret_id)
+        items = [ValueListItem(value, label) for value, label in entries]
         return items, index
 
     def _action_specs(self) -> list[ActionSpec]:
-        actions: list[ActionSpec] = []
-        if self.screen_history and self.state.current_screen != "dashboard":
-            actions.append(ActionSpec("back", "Back"))
-        if self.state.current_screen == "dashboard":
-            actions.extend(
-                [
-                ActionSpec("refresh", "Refresh"),
-                ActionSpec("configure_menu", "Configure"),
-                ActionSpec("service_menu", "Service"),
-                ]
-            )
-            return actions
-        if self.state.current_screen == "users":
-            actions.extend(
-                [
-                ActionSpec("add_user", "Add User", "success"),
-                ActionSpec("delete_user", "Delete User", "error"),
-                ActionSpec("add_secret", "Add Secret"),
-                ActionSpec("delete_secret", "Delete Secret", "error"),
-                ActionSpec("show_export", "Show Export"),
-                ActionSpec("enable_user", "Enable User"),
-                ActionSpec("disable_user", "Disable User"),
-                ActionSpec("rotate_user", "Rotate User"),
-                ActionSpec("enable_secret", "Enable Secret"),
-                ActionSpec("disable_secret", "Disable Secret"),
-                ActionSpec("rotate_secret", "Rotate Secret"),
-                ActionSpec("export_to_file", "Export To File"),
-                ]
-            )
-            return actions
-        actions.append(ActionSpec("clear_activity", "Clear Activity"))
-        return actions
+        return primary_screen_actions(self.state.current_screen, bool(self.screen_history))
 
     async def refresh_ui(
         self,
@@ -1956,7 +862,7 @@ class ManagerTextualApp(App[None]):
         if not self.is_mounted:
             return
         focused = self.focused
-        self.state.current_screen = self._normalize_screen(self.state.current_screen)
+        self.state.current_screen = normalize_screen(self.state.current_screen)
         self._refresh_selection()
         self._update_topbar()
         dashboard_mode = self.state.current_screen == "dashboard"
@@ -1972,7 +878,9 @@ class ManagerTextualApp(App[None]):
         self.query_one("#secrets-title", Static).update(self._t("secrets"))
         self.query_one("#actions-title", Static).update(f"🧰 {self._t('actions')}")
         self.query_one("#overview-content", Static).update(
-            self._render_status_card(self._dashboard_snapshot) if dashboard_mode else self._render_fields(self._build_overview_text())
+            render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
+            if dashboard_mode
+            else render_fields(self._build_overview_text())
         )
         self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
         activity_title = self.state.output_title if self.state.output_body.strip() else self._t("activity")
@@ -2127,7 +1035,7 @@ class ManagerTextualApp(App[None]):
             return
         list_id = event.list_view.id or ""
         if list_id == "sections-list":
-            screen = self._normalize_screen(str(item.value))
+            screen = normalize_screen(str(item.value))
             if screen == "language":
                 return
             if screen != self.state.current_screen:
@@ -2177,8 +1085,10 @@ class ManagerTextualApp(App[None]):
         if action == "more":
             overflow = list(self._secondary_actions.values())
             if overflow:
-                translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in overflow]
-                self.push_screen(ActionMenuScreen(self._t("actions"), translated), lambda selected: self._handle_action_menu("actions", selected))
+                self.push_screen(
+                    ActionMenuScreen(self._t("actions"), translated_actions(overflow, self._t)),
+                    self._handle_action_menu,
+                )
             return
         if action == "refresh":
             self._capture_hardware_snapshot()
@@ -2355,7 +1265,7 @@ class ManagerTextualApp(App[None]):
         if action == "lang_ru":
             self._change_language("ru")
 
-    def _handle_action_menu(self, menu_name: str, action: str | None) -> None:
+    def _handle_action_menu(self, action: str | None) -> None:
         if action is None:
             self.call_after_refresh(self._restore_default_focus)
             return
@@ -2363,20 +1273,18 @@ class ManagerTextualApp(App[None]):
             self._handle_ui_action(action)
 
     def _open_configure_menu(self) -> None:
-        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._configure_actions()]
-        self.push_screen(ActionMenuScreen(self._t("configure"), translated), lambda selected: self._handle_action_menu("configure", selected))
+        self.push_screen(
+            ActionMenuScreen(self._t("configure"), translated_actions(self._configure_actions(), self._t)),
+            self._handle_action_menu,
+        )
 
     def _open_service_menu(self) -> None:
         self.push_screen(self._build_service_menu_screen(), self._handle_service_menu_result)
 
     def _build_service_menu_screen(self) -> ServiceMenuScreen:
-        translated = [
-            ActionSpec(item.key, self._action_label(item), item.variant)
-            for item in self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
-        ]
         return ServiceMenuScreen(
             self._t("service_control"),
-            translated,
+            translated_actions(self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None), self._t),
             open_status=self._open_service_status_screen,
             open_logs=self._open_service_logs_screen,
         )
@@ -2388,14 +1296,16 @@ class ManagerTextualApp(App[None]):
         self._handle_ui_action(action)
 
     def _open_source_menu(self) -> None:
-        translated = [ActionSpec(item.key, self._action_label(item), item.variant) for item in self._source_actions()]
-        self.push_screen(ActionMenuScreen(self._t("source", "Binary"), translated), self._handle_source_menu_result)
+        self.push_screen(
+            ActionMenuScreen(self._t("source", "Binary"), translated_actions(self._source_actions(), self._t)),
+            self._handle_source_menu_result,
+        )
 
     def _handle_source_menu_result(self, action: str | None) -> None:
         if action is None:
             self._open_configure_menu()
             return
-        self._handle_action_menu("source", action)
+        self._handle_action_menu(action)
 
     def _open_language_menu(self) -> None:
         actions = [
@@ -2520,7 +1430,7 @@ class ManagerTextualApp(App[None]):
             self._open_quit_confirmation()
             return
         if self.screen_history:
-            self.state.current_screen = self._normalize_screen(self.screen_history.pop())
+            self.state.current_screen = normalize_screen(self.screen_history.pop())
             await self.refresh_ui()
             return
         if self.state.current_screen != "dashboard":
@@ -2536,13 +1446,13 @@ class ManagerTextualApp(App[None]):
         self.exit()
 
     async def action_prev_screen(self) -> None:
-        current = self._normalize_screen(self.state.current_screen)
+        current = normalize_screen(self.state.current_screen)
         index = SCREEN_ORDER.index(current)
         self._open_screen(SCREEN_ORDER[(index - 1) % len(SCREEN_ORDER)])
         await self.refresh_ui()
 
     async def action_next_screen(self) -> None:
-        current = self._normalize_screen(self.state.current_screen)
+        current = normalize_screen(self.state.current_screen)
         index = SCREEN_ORDER.index(current)
         self._open_screen(SCREEN_ORDER[(index + 1) % len(SCREEN_ORDER)])
         await self.refresh_ui()
