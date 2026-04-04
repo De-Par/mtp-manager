@@ -1328,6 +1328,7 @@ class ManagerTextualApp(App[None]):
         self._dashboard_snapshot: DashboardViewModel | None = None
         self._refresh_ui_scheduled = False
         self._reopen_screen_after_action: str | None = None
+        self._list_snapshots: dict[str, tuple[tuple[tuple[str | int, str], ...], int | None]] = {}
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -1664,15 +1665,22 @@ class ManagerTextualApp(App[None]):
         list_view = self.query_one(f"#{list_id}", ListView)
         if not list_view.is_attached:
             return False
+        normalized_index = None if not items else max(0, min(selected_index or 0, len(items) - 1))
+        snapshot = (tuple((item.value, item.label_text) for item in items), normalized_index)
+        if self._list_snapshots.get(list_id) == snapshot:
+            if list_view.index != normalized_index:
+                list_view.index = normalized_index
+            return True
         try:
             await list_view.clear()
             if items:
                 await list_view.extend(items)
-                list_view.index = max(0, min(selected_index or 0, len(items) - 1))
+                list_view.index = normalized_index
             else:
                 list_view.index = None
         except MountError:
             return False
+        self._list_snapshots[list_id] = snapshot
         return True
 
     async def _replace_actions(self, actions: list[ActionSpec]) -> bool:
@@ -1921,7 +1929,14 @@ class ManagerTextualApp(App[None]):
         actions.append(ActionSpec("clear_activity", "Clear Activity"))
         return actions
 
-    async def refresh_ui(self) -> None:
+    async def refresh_ui(
+        self,
+        *,
+        refresh_sections: bool = True,
+        refresh_user_lists: bool = True,
+        refresh_actions: bool = True,
+        preserve_focus: bool = False,
+    ) -> None:
         if not self.is_mounted:
             return
         focused = self.focused
@@ -1960,19 +1975,24 @@ class ManagerTextualApp(App[None]):
         user_items, user_index = self._user_items()
         secret_items, secret_index = self._secret_items()
 
-        if not await self._replace_list("sections-list", section_items, section_index):
-            self._queue_refresh_ui()
-            return
-        if not await self._replace_list("users-list", user_items, user_index):
-            self._queue_refresh_ui()
-            return
-        if not await self._replace_list("secrets-list", secret_items, secret_index):
-            self._queue_refresh_ui()
-            return
-        if not await self._replace_actions(self._action_specs()):
-            self._queue_refresh_ui()
-            return
+        if refresh_sections:
+            if not await self._replace_list("sections-list", section_items, section_index):
+                self._queue_refresh_ui()
+                return
+        if refresh_user_lists:
+            if not await self._replace_list("users-list", user_items, user_index):
+                self._queue_refresh_ui()
+                return
+            if not await self._replace_list("secrets-list", secret_items, secret_index):
+                self._queue_refresh_ui()
+                return
+        if refresh_actions:
+            if not await self._replace_actions(self._action_specs()):
+                self._queue_refresh_ui()
+                return
         self._apply_top_split()
+        if preserve_focus:
+            return
         if focused is None or focused not in self.walk_children():
             self._default_focus_target().focus()
 
@@ -2117,7 +2137,8 @@ class ManagerTextualApp(App[None]):
         if not button_id.startswith("action-"):
             return
         action = button_id.removeprefix("action-")
-        self._restore_default_focus()
+        if action != "refresh":
+            self._restore_default_focus()
         self._handle_ui_action(action)
 
     def _handle_ui_action(self, action: str) -> None:
@@ -2141,7 +2162,14 @@ class ManagerTextualApp(App[None]):
             return
         if action == "refresh":
             self._capture_hardware_snapshot()
-            self.run_worker(self.refresh_ui(), exclusive=True)
+            self.run_worker(
+                self.refresh_ui(
+                    refresh_sections=False,
+                    refresh_actions=False,
+                    preserve_focus=True,
+                ),
+                exclusive=True,
+            )
             return
         if action == "edit_settings":
             self.push_screen(SettingsScreen(self.controller.load_settings()), self._handle_settings_screen)
