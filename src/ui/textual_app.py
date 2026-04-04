@@ -965,11 +965,47 @@ class ManagerTextualApp(App[None]):
     #topbar {
         dock: top;
         height: 3;
+        layout: horizontal;
+        align: center middle;
         background: #1b4332;
-        color: #f6fff8;
-        padding: 0 3;
-        content-align: center middle;
+        color: #ffffff;
+        padding: 0 1 0 3;
         text-style: bold;
+    }
+
+    #topbar-title {
+        width: 1fr;
+        height: 1fr;
+        content-align: center middle;
+        color: #ffffff;
+        text-style: bold;
+    }
+
+    #topbar-close {
+        dock: right;
+        width: 5;
+        min-width: 5;
+        height: 3;
+        content-align: center middle;
+        align: center middle;
+        background: #1b4332;
+        color: #ffffff;
+        border: none;
+        padding: 0;
+        margin: 0;
+        text-style: bold;
+    }
+
+    #topbar-close:hover {
+        background: #24533d;
+        color: white;
+        border: round #74c69d;
+    }
+
+    #topbar-close:focus {
+        background: #24533d;
+        color: white;
+        border: round #95d5b2;
     }
 
     #root {
@@ -1331,7 +1367,9 @@ class ManagerTextualApp(App[None]):
         self._list_snapshots: dict[str, tuple[tuple[tuple[str | int, str], ...], int | None]] = {}
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="topbar")
+        with Horizontal(id="topbar"):
+            yield Static("", id="topbar-title")
+            yield Button("✕", id="topbar-close", classes="topbar-close")
         with Vertical(id="root"):
             with Horizontal(id="row-primary", classes="row"):
                 with Vertical(classes="panel", id="sections-panel"):
@@ -1591,8 +1629,8 @@ class ManagerTextualApp(App[None]):
 
     def _update_topbar(self) -> None:
         header = Text()
-        header.append(self._t("app_title", "mtp-manager"), style="bold white")
-        self.query_one("#topbar", Static).update(header)
+        header.append(self._t("app_title", "mtp-manager"), style="bold #ffffff")
+        self.query_one("#topbar-title", Static).update(header)
 
     def _configure_actions(self) -> list[ActionSpec]:
         return [
@@ -1804,6 +1842,9 @@ class ManagerTextualApp(App[None]):
         if not self.is_mounted:
             return
         self._default_focus_target().focus()
+
+    def _on_main_workspace(self) -> bool:
+        return self._normalize_screen(self.state.current_screen) in SCREEN_ORDER
 
     def _run_service_cleanup(self) -> str:
         result = self.controller.service_cleanup()
@@ -2134,6 +2175,10 @@ class ManagerTextualApp(App[None]):
         if self._busy:
             return
         button_id = event.button.id or ""
+        if button_id == "topbar-close":
+            event.stop()
+            self._open_quit_confirmation()
+            return
         if not button_id.startswith("action-"):
             return
         action = button_id.removeprefix("action-")
@@ -2541,6 +2586,9 @@ class ManagerTextualApp(App[None]):
         self.call_after_refresh(self._restore_default_focus)
 
     async def action_go_back(self) -> None:
+        if self._on_main_workspace():
+            self._open_quit_confirmation()
+            return
         if self.screen_history:
             self.state.current_screen = self._normalize_screen(self.screen_history.pop())
             await self.refresh_ui()
@@ -2552,7 +2600,7 @@ class ManagerTextualApp(App[None]):
         self._open_quit_confirmation()
 
     def action_quit_app(self) -> None:
-        if self.state.current_screen == "dashboard" and not self.screen_history:
+        if self._on_main_workspace():
             self._open_quit_confirmation()
             return
         self.exit()
