@@ -32,7 +32,7 @@ CATALOG = {
     "more": "More",
     "refresh": "Refresh",
     "setup": "Setup",
-    "edit_settings": "Edit",
+    "edit_settings": "Edit Settings",
     "show_export": "Show Export",
     "clear_activity": "Clear Activity",
     "initial_setup": "Initial Setup",

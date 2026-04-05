@@ -32,7 +32,7 @@ CATALOG = {
     "more": "Ещё",
     "refresh": "Обновить",
     "setup": "Установить",
-    "edit_settings": "Изменить",
+    "edit_settings": "Редактировать настройки",
     "show_export": "Показать экспорт",
     "clear_activity": "Очистить вывод",
     "initial_setup": "Первичная установка",
