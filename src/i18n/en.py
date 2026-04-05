@@ -95,4 +95,5 @@ CATALOG = {
     "working": "Working",
     "operation_started": "Operation started.",
     "copied_to_clipboard": "Copied to clipboard.",
+    "nothing_to_copy": "Nothing selected to copy.",
 }

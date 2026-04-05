@@ -95,4 +95,5 @@ CATALOG = {
     "working": "Выполняется",
     "operation_started": "Операция запущена.",
     "copied_to_clipboard": "Скопировано в буфер обмена.",
+    "nothing_to_copy": "Нечего копировать.",
 }

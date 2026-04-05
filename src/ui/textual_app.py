@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import shutil
+import subprocess
+import sys
 from typing import Any
 
 from rich.cells import cell_len
@@ -9,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.widget import MountError
 from textual.widgets import Button, Label, ListItem, ListView, Static
@@ -50,6 +54,15 @@ from ui.modals import (
 from ui.state import UIState
 
 BUSY_FRAMES = ("⏳", "⌛")
+if sys.platform == "darwin":
+    COPY_SELECTION_BINDINGS = [
+        Binding("ctrl+c", "copy_selection", "Copy", show=False, priority=True),
+        Binding("super+c", "copy_selection", "Copy", show=False, priority=True),
+    ]
+else:
+    COPY_SELECTION_BINDINGS = [
+        Binding("ctrl+c", "copy_selection", "Copy", show=False, priority=True),
+    ]
 
 
 @dataclass(slots=True)
@@ -464,6 +477,7 @@ class ManagerTextualApp(App[None]):
     """
 
     BINDINGS = [
+        *COPY_SELECTION_BINDINGS,
         ("q", "quit_app", "Quit"),
         ("escape", "go_back", "Back"),
         ("backspace", "go_back", "Back"),
@@ -801,9 +815,21 @@ class ManagerTextualApp(App[None]):
     def _handle_service_status_viewer_action(self, action: str) -> bool:
         if action != "copy_service_status":
             return False
-        self.copy_to_clipboard(self.controller.service_status_text())
+        self._copy_text(self.controller.service_status_text())
         self.notify(self._t("copied_to_clipboard", "Copied to clipboard."), severity="information")
         return True
+
+    def _copy_text(self, text: str) -> None:
+        self.copy_to_clipboard(text)
+        if sys.platform != "darwin":
+            return
+        pbcopy = shutil.which("pbcopy")
+        if not pbcopy:
+            return
+        try:
+            subprocess.run([pbcopy], input=text.encode("utf-8"), check=False)
+        except OSError:
+            return
 
     def _open_service_logs_screen(self) -> None:
         self.push_screen(
@@ -1463,6 +1489,19 @@ class ManagerTextualApp(App[None]):
             self._open_quit_confirmation()
             return
         self.exit()
+
+    def action_copy_selection(self) -> None:
+        selected_text = self.screen.get_selected_text()
+        if selected_text:
+            self._copy_text(selected_text)
+            self.notify(self._t("copied_to_clipboard", "Copied to clipboard."), severity="information")
+            return
+        focused = self.screen.focused
+        copy_action = getattr(focused, "action_copy", None) if focused is not None else None
+        if callable(copy_action):
+            copy_action()
+            return
+        self.notify(self._t("nothing_to_copy", "Nothing selected to copy."), severity="warning")
 
     async def action_prev_screen(self) -> None:
         current = normalize_screen(self.state.current_screen)
