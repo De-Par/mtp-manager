@@ -22,6 +22,7 @@ ROOT_DIR="$(cd "$(dirname "$(setup_script_path)")" && pwd)"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-auto}"
+DISTRO_FAMILY=""
 
 log() {
   printf '[setup] %s\n' "$1"
@@ -38,6 +39,22 @@ die() {
 
 has_command() {
   command -v "$1" >/dev/null 2>&1
+}
+
+detect_distro_family() {
+  if [ -z "${DISTRO_FAMILY:-}" ] && [ -f /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    local distro_id="${ID:-}"
+    local distro_like="${ID_LIKE:-}"
+    case " $distro_id $distro_like " in
+      *" debian "*|*" ubuntu "*) DISTRO_FAMILY="debian" ;;
+      *" fedora "*|*" rhel "*|*" rocky "*|*" almalinux "*|*" centos "*) DISTRO_FAMILY="fedora" ;;
+      *" arch "*|*" archlinux "*|*" manjaro "*) DISTRO_FAMILY="arch" ;;
+      *) DISTRO_FAMILY="unknown" ;;
+    esac
+  fi
+  printf '%s\n' "${DISTRO_FAMILY:-unknown}"
 }
 
 run_privileged() {
@@ -65,35 +82,59 @@ install_system_deps() {
     log "Skipping system packages by request"
     return
   fi
-  if ! has_command apt-get; then
-    warn "apt-get not found; skipping system package installation"
-    return
-  fi
-  if [ -f /etc/os-release ]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    case "${ID:-}" in
-      debian|ubuntu) ;;
-      *)
-        if [ "$INSTALL_SYSTEM_DEPS" = "auto" ]; then
-          warn "Unsupported distro for automatic package install: ${ID:-unknown}"
-          return
-        fi
-        ;;
-    esac
-  fi
+  local family
+  family="$(detect_distro_family)"
   log "Installing system packages"
-  run_privileged apt-get update
-  run_privileged apt-get install -y \
-    ca-certificates \
-    curl \
-    git \
-    python3 \
-    python3-pip \
-    python3-venv \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev
+  case "$family" in
+    debian)
+      run_privileged apt-get update
+      run_privileged apt-get install -y \
+        ca-certificates \
+        curl \
+        git \
+        python3 \
+        python3-pip \
+        python3-venv \
+        build-essential \
+        pkg-config \
+        rustc \
+        cargo
+      ;;
+    fedora)
+      run_privileged dnf install -y \
+        ca-certificates \
+        curl \
+        git \
+        python3 \
+        python3-pip \
+        python3-virtualenv \
+        gcc \
+        make \
+        pkgconf-pkg-config \
+        rust \
+        cargo
+      ;;
+    arch)
+      run_privileged pacman -Sy --noconfirm \
+        ca-certificates \
+        curl \
+        git \
+        python \
+        python-pip \
+        python-virtualenv \
+        base-devel \
+        pkgconf \
+        rust \
+        cargo
+      ;;
+    *)
+      if [ "$INSTALL_SYSTEM_DEPS" = "auto" ]; then
+        warn "Unsupported distro for automatic package install: ${ID:-unknown}"
+        return
+      fi
+      die "Unsupported distro for automatic package install: ${ID:-unknown}"
+      ;;
+  esac
 }
 
 ensure_python() {

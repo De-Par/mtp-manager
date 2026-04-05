@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mtp-manager"
 version = "0.1.0"
-description = "Terminal UI manager for telemt on Debian and Ubuntu"
+description = "Terminal UI manager for telemt on Debian, Ubuntu, Fedora, and Arch Linux"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 dependencies = [
