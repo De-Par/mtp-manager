@@ -729,6 +729,13 @@ class ManagerTextualApp(App[None]):
             text.append("▁" * (width - filled), style="#5b6777")
         return text
 
+    def _busy_dialog_width(self) -> int:
+        label_width = cell_len(f"{BUSY_FRAMES[self._busy_frame_index]} {self._busy_label}")
+        content_width = max(18, label_width)
+        desired_width = content_width + 4
+        available_width = max(26, self.size.width - 6)
+        return max(26, min(desired_width, available_width))
+
     def _set_actions_disabled(self, disabled: bool) -> None:
         for widget in self.query(".action-button"):
             if isinstance(widget, Button):
@@ -737,6 +744,7 @@ class ManagerTextualApp(App[None]):
     def _update_busy_screen(self) -> None:
         if not self.is_mounted:
             return
+        self.query_one("#busy-dialog", Vertical).styles.width = self._busy_dialog_width()
         self.query_one("#busy-label", Static).update(f"{BUSY_FRAMES[self._busy_frame_index]} {self._busy_label}")
         self.query_one("#busy-progress", Static).update(self._render_busy_bar(self._busy_progress))
 
