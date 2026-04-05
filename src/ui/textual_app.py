@@ -790,8 +790,20 @@ class ManagerTextualApp(App[None]):
 
     def _service_logs_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("clear_service_logs", self._t("cleanup_logs", "Clear logs"), "error", "viewer-danger-action"),
+            ActionSpec("clear_service_logs", "Clean", "error", "viewer-danger-action"),
         ]
+
+    def _service_status_actions(self) -> list[ActionSpec]:
+        return [
+            ActionSpec("copy_service_status", self._t("copy", "Copy")),
+        ]
+
+    def _handle_service_status_viewer_action(self, action: str) -> bool:
+        if action != "copy_service_status":
+            return False
+        self.copy_to_clipboard(self.controller.service_status_text())
+        self.notify(self._t("copied_to_clipboard", "Copied to clipboard."), severity="information")
+        return True
 
     def _open_service_logs_screen(self) -> None:
         self.push_screen(
@@ -805,7 +817,14 @@ class ManagerTextualApp(App[None]):
         )
 
     def _open_service_status_screen(self) -> None:
-        self.push_screen(FullscreenTextScreen("Service Status", self.controller.service_status_text()))
+        self.push_screen(
+            FullscreenTextScreen(
+                "Service Status",
+                self.controller.service_status_text(),
+                actions=translated_actions(self._service_status_actions(), self._t),
+                action_handler=self._handle_service_status_viewer_action,
+            )
+        )
 
     def _handle_service_logs_modal_result(self, result: str | None) -> None:
         if result == "clear_service_logs":
@@ -1134,7 +1153,7 @@ class ManagerTextualApp(App[None]):
         if action == "update_source":
             self._run_action(
                 self.controller.run_update,
-                busy_label=f"{self._t('update_source', 'Update telemt')}...",
+                busy_label=f"{self._t('update_source', 'Sync telemt')}...",
             )
             return
         if action == "rebuild":

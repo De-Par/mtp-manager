@@ -94,7 +94,7 @@ def configure_actions() -> list[ActionSpec]:
 def source_actions() -> list[ActionSpec]:
     """Actions shown in the Binary modal."""
     return [
-        ActionSpec("update_source", "Update telemt"),
+        ActionSpec("update_source", "Sync telemt"),
         ActionSpec("rebuild", "Reinstall telemt"),
         ActionSpec("install_ref", "Install tag / commit"),
     ]

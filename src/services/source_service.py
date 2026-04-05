@@ -28,7 +28,7 @@ class SourceService:
         if mode == "reuse" and self.paths.binary_file.exists() and not normalized_ref:
             return self.paths.binary_file
 
-        self.paths.bin_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_install_root()
         if not normalized_ref:
             self._install_release_binary()
             return self.paths.binary_file
@@ -72,6 +72,15 @@ class SourceService:
 
         os.chmod(self.paths.binary_file, 0o755)
         return self.paths.binary_file
+
+    def _prepare_install_root(self) -> None:
+        self.paths.mt_dir.mkdir(parents=True, exist_ok=True)
+        self.paths.bin_dir.mkdir(parents=True, exist_ok=True)
+        for entry in self.paths.bin_dir.iterdir():
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
 
     def _build_from_source(self, ref: str) -> Path:
         archive_url = f"https://codeload.github.com/telemt/telemt/tar.gz/{ref}"

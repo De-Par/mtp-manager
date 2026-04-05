@@ -712,6 +712,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         return_menu: str | None = None,
         clear_before_close: bool = False,
         actions: list[ActionSpec] | None = None,
+        action_handler: Callable[[str], bool] | None = None,
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -719,6 +720,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         self.return_menu = return_menu
         self.clear_before_close = clear_before_close
         self.actions = actions or []
+        self.action_handler = action_handler
         self._close_started = False
 
     def compose(self) -> ComposeResult:
@@ -745,7 +747,10 @@ class FullscreenTextScreen(ModalScreen[str | None]):
             self._close_viewer()
             return
         if button_id.startswith("viewer-"):
-            self.dismiss(button_id.removeprefix("viewer-"))
+            action = button_id.removeprefix("viewer-")
+            if self.action_handler is not None and self.action_handler(action):
+                return
+            self.dismiss(action)
 
     def action_close_viewer(self) -> None:
         self._close_viewer()

@@ -37,7 +37,7 @@ CATALOG = {
     "show_export": "Показать экспорт",
     "clear_activity": "Очистить вывод",
     "initial_setup": "Первичная установка",
-    "update_source": "Обновить telemt",
+    "update_source": "Синхронизировать telemt",
     "rebuild": "Переустановить telemt",
     "install_ref": "Установить tag / commit",
     "install_ref_title": "Установить telemt ref",
@@ -64,6 +64,7 @@ CATALOG = {
     "service_cleanup": "Очистка",
     "unit_preview": "Юнит",
     "cleanup_logs": "Очистить логи",
+    "copy": "Копировать",
     "factory_reset": "Сброс",
     "quit": "Выход",
     "english": "English",
@@ -93,4 +94,5 @@ CATALOG = {
     "close": "Закрыть",
     "working": "Выполняется",
     "operation_started": "Операция запущена.",
+    "copied_to_clipboard": "Скопировано в буфер обмена.",
 }

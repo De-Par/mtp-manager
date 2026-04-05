@@ -289,7 +289,7 @@ class AppController:
         settings = self.load_settings()
         if self.systemd_service.is_installed():
             self.install_service.update_source(settings, self.script_path, source_mode="update")
-            return "Setup refreshed the existing telemt installation."
+            return "Setup synchronized the existing telemt installation."
 
         from services.install_service import SetupOptions
 
@@ -298,7 +298,7 @@ class AppController:
 
     def run_update(self, *, source_mode: str = "update") -> str:
         self.install_service.update_source(self.load_settings(), self.script_path, source_mode=source_mode)
-        return "telemt binary updated."
+        return "telemt synchronized with the current target."
 
     def run_rebuild(self) -> str:
         self.install_service.rebuild_source(self.load_settings())

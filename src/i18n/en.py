@@ -37,7 +37,7 @@ CATALOG = {
     "show_export": "Show Export",
     "clear_activity": "Clear Activity",
     "initial_setup": "Initial Setup",
-    "update_source": "Update telemt",
+    "update_source": "Sync telemt",
     "rebuild": "Reinstall telemt",
     "install_ref": "Install tag / commit",
     "install_ref_title": "Install telemt ref",
@@ -64,6 +64,7 @@ CATALOG = {
     "service_cleanup": "Cleanup",
     "unit_preview": "Unit Preview",
     "cleanup_logs": "Cleanup Logs",
+    "copy": "Copy",
     "factory_reset": "Factory Reset",
     "quit": "Quit",
     "english": "English",
@@ -93,4 +94,5 @@ CATALOG = {
     "close": "Close",
     "working": "Working",
     "operation_started": "Operation started.",
+    "copied_to_clipboard": "Copied to clipboard.",
 }
