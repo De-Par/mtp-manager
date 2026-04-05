@@ -10,10 +10,12 @@ from errors import PlatformError
 class DistroInfo:
     distro_id: str
     version_id: str
+    id_like: tuple[str, ...]
+    family: str
 
 
 class DistroProbe:
-    SUPPORTED = {"debian", "ubuntu"}
+    SUPPORTED_FAMILIES = {"debian", "fedora", "arch"}
 
     def detect(self) -> DistroInfo:
         os_release = Path("/etc/os-release")
@@ -25,7 +27,21 @@ class DistroProbe:
                 continue
             key, value = line.split("=", 1)
             values[key] = value.strip().strip('"')
-        info = DistroInfo(values.get("ID", ""), values.get("VERSION_ID", "unknown"))
-        if info.distro_id not in self.SUPPORTED:
+        distro_id = values.get("ID", "").strip().lower()
+        id_like = tuple(part.strip().lower() for part in values.get("ID_LIKE", "").split() if part.strip())
+        family = self._detect_family(distro_id, id_like)
+        info = DistroInfo(distro_id, values.get("VERSION_ID", "unknown"), id_like, family)
+        if info.family not in self.SUPPORTED_FAMILIES:
             raise PlatformError(f"unsupported distribution: {info.distro_id or 'unknown'}")
         return info
+
+    @staticmethod
+    def _detect_family(distro_id: str, id_like: tuple[str, ...]) -> str:
+        candidates = (distro_id, *id_like)
+        if any(name in {"debian", "ubuntu"} for name in candidates):
+            return "debian"
+        if any(name in {"fedora", "rhel", "centos", "rocky", "almalinux"} for name in candidates):
+            return "fedora"
+        if any(name in {"arch", "archlinux", "manjaro"} for name in candidates):
+            return "arch"
+        return distro_id

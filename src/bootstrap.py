@@ -6,7 +6,7 @@ import shutil
 
 from controller import AppController
 from i18n import Translator
-from infra import DistroProbe, JsonStorage, LocaleManager, PublicIpResolver, ShellRunner, SystemdManager, UfwManager
+from infra import DistroProbe, FirewallManager, JsonStorage, LocaleManager, PackageManager, PublicIpResolver, ShellRunner, SystemdManager
 from paths import ProjectPaths, default_paths
 from services import (
     CleanupService,
@@ -82,26 +82,30 @@ def build_container() -> AppContainer:
     shell = ShellRunner()
     storage = JsonStorage()
     migrate_legacy_layout(paths)
+    distro_probe = DistroProbe()
+    packages = PackageManager(shell, distro_probe)
+    firewall = FirewallManager(shell, distro_probe)
     inventory_service = InventoryService(storage, paths)
     systemd_manager = SystemdManager(shell)
     systemd_service = SystemdService(systemd_manager, storage, paths)
     network_service = NetworkService(PublicIpResolver())
     runtime_service = ProxyRuntimeService(storage, inventory_service, paths)
-    settings_service = SettingsService(storage, paths, runtime=runtime_service, systemd=systemd_service, ufw=UfwManager(shell))
+    settings_service = SettingsService(storage, paths, runtime=runtime_service, systemd=systemd_service, firewall=firewall)
     translator = Translator(settings_service.load().ui_lang)
     diagnostics_service = DiagnosticsService(network_service, inventory_service, systemd_service, shell, paths)
     export_service = ExportService()
     source_service = SourceService(shell, paths)
     install_service = InstallService(
         shell=shell,
-        distro=DistroProbe(),
+        distro=distro_probe,
+        packages=packages,
         locale=LocaleManager(shell, paths.locale_file),
         source=source_service,
         runtime=runtime_service,
         systemd=systemd_service,
-        ufw=UfwManager(shell),
+        firewall=firewall,
     )
-    cleanup_service = CleanupService(systemd_manager, storage, paths)
+    cleanup_service = CleanupService(systemd_manager, storage, paths, packages)
     controller = AppController(
         translator=translator,
         settings_service=settings_service,

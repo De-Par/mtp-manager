@@ -6,9 +6,10 @@ from pathlib import Path
 
 from errors import PlatformError, SourceBuildRequiredError
 from infra.distro import DistroProbe
+from infra.firewall import FirewallManager
 from infra.locale import LocaleManager
+from infra.packages import PackageManager
 from infra.shell import ShellRunner
-from infra.ufw import UfwManager
 from models.settings import AppSettings
 from services.proxy_runtime_service import ProxyRuntimeService
 from services.source_service import SourceService
@@ -23,41 +24,38 @@ class SetupOptions:
 
 
 class InstallService:
-    BUILD_PACKAGES = ["cargo", "rustc", "build-essential", "pkg-config"]
-
     def __init__(
         self,
         shell: ShellRunner,
         distro: DistroProbe,
+        packages: PackageManager,
         locale: LocaleManager,
         source: SourceService,
         runtime: ProxyRuntimeService,
         systemd: SystemdService,
-        ufw: UfwManager,
+        firewall: FirewallManager,
     ) -> None:
         self.shell = shell
         self.distro = distro
+        self.packages = packages
         self.locale = locale
         self.source = source
         self.runtime = runtime
         self.systemd = systemd
-        self.ufw = ufw
+        self.firewall = firewall
 
     def _stop_service_for_binary_update(self) -> None:
         if self.systemd.is_installed():
             self.systemd.stop()
 
     def _install_packages(self, packages: list[str]) -> None:
-        if not packages:
-            return
-        self.shell.run(["apt-get", "update"])
-        self.shell.run(["apt-get", "install", "-y", *packages])
+        self.packages.install(packages)
 
     def _install_source_with_fallback(self, mode: str, ref: str) -> None:
         try:
             self.source.install(mode, ref, allow_build=False)
         except SourceBuildRequiredError:
-            self._install_packages(self.BUILD_PACKAGES)
+            self._install_packages(list(self.packages.package_set.build))
             self.source.install(mode, ref, allow_build=True)
 
     def initial_setup(self, settings: AppSettings, script_path: Path, options: SetupOptions) -> None:
@@ -67,15 +65,15 @@ class InstallService:
         self.locale.ensure_c_utf8()
         packages: list[str] = []
         if options.install_dependencies:
-            packages.extend(["curl", "ca-certificates", "ufw"])
+            packages.extend(self.packages.package_set.runtime)
         self._install_packages(sorted(set(packages)))
         self._stop_service_for_binary_update()
         self._install_source_with_fallback(options.source_mode, settings.telemt_ref)
         self.systemd.write_units(script_path)
         enabled_count = self.runtime.reconcile(settings, self.systemd, restart=False)
         if options.configure_firewall:
-            self.ufw.allow_tcp(22)
-            self.ufw.allow_tcp(settings.mt_port)
+            self.firewall.allow_tcp(22)
+            self.firewall.allow_tcp(settings.mt_port)
         if enabled_count > 0:
             self.systemd.start()
 

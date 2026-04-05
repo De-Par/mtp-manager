@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from infra.firewall import FirewallManager
 from infra.storage import JsonStorage
-from infra.ufw import UfwManager
 from models.settings import AppSettings
 from paths import ProjectPaths
 from services.proxy_runtime_service import ProxyRuntimeService
@@ -17,13 +17,13 @@ class SettingsService:
         paths: ProjectPaths,
         runtime: ProxyRuntimeService | None = None,
         systemd: SystemdService | None = None,
-        ufw: UfwManager | None = None,
+        firewall: FirewallManager | None = None,
     ) -> None:
         self.storage = storage
         self.paths = paths
         self.runtime = runtime
         self.systemd = systemd
-        self.ufw = ufw
+        self.firewall = firewall
 
     def load(self) -> AppSettings:
         payload = self.storage.load_json(self.paths.settings_file, default={})
@@ -41,10 +41,10 @@ class SettingsService:
         updated = replace(current, **changes)
         updated.validate()
         self.save(updated)
-        if self.ufw and updated.mt_port != current.mt_port:
-            self.ufw.allow_tcp(22)
-            self.ufw.allow_tcp(updated.mt_port)
-            self.ufw.delete_allow_tcp(current.mt_port)
+        if self.firewall and updated.mt_port != current.mt_port:
+            self.firewall.allow_tcp(22)
+            self.firewall.allow_tcp(updated.mt_port)
+            self.firewall.delete_allow_tcp(current.mt_port)
         if apply_runtime and self.runtime and self.systemd:
             self.runtime.reconcile(updated, self.systemd, restart=True)
         return updated

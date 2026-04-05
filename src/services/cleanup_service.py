@@ -4,16 +4,18 @@ import shutil
 from pathlib import Path
 import time
 
+from infra.packages import PackageManager
 from infra.storage import JsonStorage
 from infra.systemd import SystemdManager
 from paths import ProjectPaths
 
 
 class CleanupService:
-    def __init__(self, systemd: SystemdManager, storage: JsonStorage, paths: ProjectPaths) -> None:
+    def __init__(self, systemd: SystemdManager, storage: JsonStorage, paths: ProjectPaths, packages: PackageManager) -> None:
         self.systemd = systemd
         self.storage = storage
         self.paths = paths
+        self.packages = packages
 
     def cleanup_runtime(self) -> None:
         for target in (self.paths.export_file, self.paths.runtime_file):
@@ -23,9 +25,7 @@ class CleanupService:
     def cleanup_logs(self) -> None:
         self.systemd.shell.run(["journalctl", "--rotate"], check=False)
         self.systemd.shell.run(["journalctl", "--vacuum-time=1d", "--vacuum-size=25M"], check=False)
-        self.systemd.shell.run(["apt-get", "autoremove", "--purge", "-y"], check=False)
-        self.systemd.shell.run(["apt-get", "clean"], check=False)
-        self.systemd.shell.run(["apt-get", "autoclean"], check=False)
+        self.packages.cleanup()
         self.systemd.shell.run(["systemd-tmpfiles", "--clean"], check=False)
         self.systemd.shell.run(
             [
@@ -40,7 +40,7 @@ class CleanupService:
             check=False,
         )
         self.systemd.shell.run(
-            ["sh", "-lc", "rm -rf /var/crash/* /var/lib/apt/lists/* /root/.cache/* /var/cache/man/*"],
+            ["sh", "-lc", "rm -rf /var/crash/* /var/lib/apt/lists/* /var/cache/dnf/* /var/cache/pacman/pkg/* /root/.cache/* /var/cache/man/*"],
             check=False,
         )
         self.systemd.shell.run(["sh", "-lc", "sync && echo 3 > /proc/sys/vm/drop_caches"], check=False)
