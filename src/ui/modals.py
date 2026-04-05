@@ -271,7 +271,7 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
-                yield Static(format_window_title("Edit Settings"), classes="dialog-title")
+                yield Static(format_window_title("Edit"), classes="dialog-title")
                 yield Static("Proxy port", classes="field-label")
                 yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
                 yield Static("API port", classes="field-label")

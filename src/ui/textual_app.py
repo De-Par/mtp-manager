@@ -1408,7 +1408,7 @@ class ManagerTextualApp(App[None]):
 
     def _handle_settings_screen(self, result: dict[str, str] | None) -> None:
         if not result:
-            self.call_after_refresh(self._restore_default_focus)
+            self._open_configure_menu()
             return
         def apply_settings() -> str:
             self.controller.update_settings(
@@ -1422,7 +1422,7 @@ class ManagerTextualApp(App[None]):
 
         self._run_action(
             apply_settings,
-            busy_label=f"{self._t('edit_settings', 'Edit Settings')}...",
+            busy_label=f"{self._t('edit_settings', 'Edit')}...",
         )
 
     def _handle_delete_user(self, confirmed: bool) -> None:

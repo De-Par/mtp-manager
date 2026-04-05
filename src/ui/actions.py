@@ -80,8 +80,8 @@ def split_actions(actions: list[ActionSpec], primary_action_limit: int = PRIMARY
 def configure_actions() -> list[ActionSpec]:
     """Actions shown in the Configure modal."""
     return [
-        ActionSpec("edit_settings", "Edit Settings"),
         ActionSpec("setup", "Setup", "success"),
+        ActionSpec("edit_settings", "Edit"),
         ActionSpec("source_menu", "Binary"),
         ActionSpec("factory_reset", "Factory Reset", "error"),
     ]
