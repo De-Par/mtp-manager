@@ -3,11 +3,11 @@
 <p align="center">
   TUI manager for
   <a href="https://github.com/telemt/telemt">telemt</a>
-  on Debian and Ubuntu
+  on Debian, Ubuntu, Fedora, and Arch Linux
 </p>
 
 <p align="center">
-  Install, update, configure, and operate a telemt-based MTProto proxy from a compact terminal UI.
+  Install, update, configure, and operate a telemt-based MTProto proxy from a compact terminal UI
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
     <img src="https://img.shields.io/badge/textual-TUI-3FA34D?style=flat-square&logoColor=white" alt="Textual TUI">
   </a>
   <a href="https://ubuntu.com/server">
-    <img src="https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-E95420?style=flat-square&logoColor=white" alt="Debian or Ubuntu">
+    <img src="https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu%20%7C%20Fedora%20%7C%20Arch-E95420?style=flat-square&logoColor=white" alt="Debian, Ubuntu, Fedora, or Arch Linux">
   </a>
   <a href="https://github.com/telemt/telemt">
     <img src="https://img.shields.io/badge/backend-telemt-2563EB?style=flat-square&logoColor=white" alt="telemt backend">
@@ -126,7 +126,7 @@ mtp-manager
 ## Requirements
 
 - Python `3.11+`
-- Debian or Ubuntu
+- Debian, Ubuntu, Fedora, or Arch Linux
 - `systemd`
 - root privileges for install, service, firewall, locale, and cleanup actions
 
