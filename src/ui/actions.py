@@ -16,7 +16,6 @@ ACTION_LABEL_KEYS = {
     "source_menu": "source",
     "refresh": "refresh",
     "setup": "setup",
-    "apply_changes": "apply_changes",
     "edit_settings": "edit_settings",
     "show_export": "show_export",
     "clear_activity": "clear_activity",
@@ -25,8 +24,6 @@ ACTION_LABEL_KEYS = {
     "rebuild": "rebuild",
     "install_ref": "install_ref",
     "reinstall_units": "reinstall_units",
-    "refresh_config": "refresh_config",
-    "refresh_runtime": "refresh_runtime",
     "add_user": "add_user",
     "add_secret": "add_secret",
     "enable_user": "enable_user",
@@ -85,7 +82,6 @@ def configure_actions() -> list[ActionSpec]:
     return [
         ActionSpec("edit_settings", "Edit Settings"),
         ActionSpec("setup", "Setup", "success"),
-        ActionSpec("apply_changes", "Apply Changes"),
         ActionSpec("source_menu", "Binary"),
         ActionSpec("factory_reset", "Factory Reset", "error"),
     ]

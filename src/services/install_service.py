@@ -87,12 +87,3 @@ class InstallService:
 
     def reinstall_units(self, script_path: Path) -> None:
         self.systemd.write_units(script_path)
-
-    def refresh_proxy_config(self, settings: AppSettings) -> bool:
-        previous = self.runtime.paths.telemt_config_file.read_text(encoding="utf-8") if self.runtime.paths.telemt_config_file.exists() else ""
-        self.runtime.reconcile(settings, self.systemd, restart=True)
-        current = self.runtime.paths.telemt_config_file.read_text(encoding="utf-8") if self.runtime.paths.telemt_config_file.exists() else ""
-        return current != previous
-
-    def refresh_runtime(self, settings: AppSettings) -> int:
-        return self.runtime.reconcile(settings, self.systemd, restart=True)

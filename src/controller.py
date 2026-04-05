@@ -321,22 +321,6 @@ class AppController:
         self.install_service.reinstall_units(self.script_path)
         return "Systemd units rewritten"
 
-    def run_apply_changes(self) -> str:
-        settings = self.load_settings()
-        changed = self.install_service.refresh_proxy_config(settings)
-        enabled = self.runtime_service.enabled_secret_count()
-        if changed:
-            return f"Changes applied. telemt config refreshed; enabled secrets: {enabled}."
-        return f"Changes applied. Runtime refreshed; enabled secrets: {enabled}."
-
-    def run_refresh_proxy_config(self) -> str:
-        changed = self.install_service.refresh_proxy_config(self.load_settings())
-        return "telemt config refreshed." if changed else "telemt config is already up to date."
-
-    def run_refresh_runtime(self) -> str:
-        enabled = self.install_service.refresh_runtime(self.load_settings())
-        return f"Runtime refreshed; enabled secrets: {enabled}."
-
     def service_start(self) -> str:
         self._ensure_service_can_run()
         self.systemd_service.start()

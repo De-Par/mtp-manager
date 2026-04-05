@@ -1172,12 +1172,6 @@ class ManagerTextualApp(App[None]):
                 busy_label=f"{self._t('setup', 'Setup')}...",
             )
             return
-        if action == "apply_changes":
-            self._run_action(
-                self.controller.run_apply_changes,
-                busy_label=f"{self._t('apply_changes', 'Apply Changes')}...",
-            )
-            return
         if action == "initial_setup":
             self._run_action(
                 lambda: self.controller.run_setup(source_mode="fresh"),
@@ -1206,12 +1200,6 @@ class ManagerTextualApp(App[None]):
                 ),
                 self._handle_install_ref,
             )
-            return
-        if action == "refresh_config":
-            self._run_action(self.controller.run_refresh_proxy_config)
-            return
-        if action == "refresh_runtime":
-            self._run_action(self.controller.run_refresh_runtime)
             return
         if action == "add_user":
             self.push_screen(TextInputScreen("Add User", "User name"), self._handle_add_user)
@@ -1422,7 +1410,7 @@ class ManagerTextualApp(App[None]):
         if not result:
             self.call_after_refresh(self._restore_default_focus)
             return
-        try:
+        def apply_settings() -> str:
             self.controller.update_settings(
                 mt_port=int(result["mt_port"]),
                 stats_port=int(result["stats_port"]),
@@ -1430,14 +1418,12 @@ class ManagerTextualApp(App[None]):
                 fake_tls_domain=result["fake_tls_domain"],
                 ad_tag=result["ad_tag"],
             )
-        except Exception as exc:
-            self._notify_result(str(exc), severity="error")
-            self.run_worker(self.refresh_ui(), exclusive=True)
-            return
-        self.state.output_title = self._t("activity")
-        self.state.output_body = ""
-        self._notify_result("Settings saved.")
-        self.run_worker(self.refresh_ui(), exclusive=True)
+            return self._t("settings_saved_applied", "Settings saved and applied.")
+
+        self._run_action(
+            apply_settings,
+            busy_label=f"{self._t('edit_settings', 'Edit Settings')}...",
+        )
 
     def _handle_delete_user(self, confirmed: bool) -> None:
         if confirmed and self.state.selected_user:
