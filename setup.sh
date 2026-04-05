@@ -90,42 +90,18 @@ install_system_deps() {
       run_privileged apt-get update
       run_privileged apt-get install -y \
         ca-certificates \
-        curl \
-        git \
         python3 \
-        python3-pip \
-        python3-venv \
-        build-essential \
-        pkg-config \
-        rustc \
-        cargo
+        python3-venv
       ;;
     fedora)
       run_privileged dnf install -y \
         ca-certificates \
-        curl \
-        git \
-        python3 \
-        python3-pip \
-        python3-virtualenv \
-        gcc \
-        make \
-        pkgconf-pkg-config \
-        rust \
-        cargo
+        python3
       ;;
     arch)
       run_privileged pacman -Sy --noconfirm \
         ca-certificates \
-        curl \
-        git \
-        python \
-        python-pip \
-        python-virtualenv \
-        base-devel \
-        pkgconf \
-        rust \
-        cargo
+        python
       ;;
     *)
       if [ "$INSTALL_SYSTEM_DEPS" = "auto" ]; then
@@ -156,9 +132,9 @@ ensure_venv() {
 
 install_project() {
   log "Upgrading packaging tools"
-  "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+  PIP_NO_CACHE_DIR=1 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
   log "Installing project in editable mode"
-  "$VENV_DIR/bin/python" -m pip install -e "$ROOT_DIR" --no-build-isolation
+  PIP_NO_CACHE_DIR=1 "$VENV_DIR/bin/python" -m pip install -e "$ROOT_DIR" --no-build-isolation
 }
 
 verify_installation() {
