@@ -1,4 +1,4 @@
-"""Reusable modal screens used by the Textual application."""
+"""Reusable modal screens used by the Textual application"""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ WINDOW_TITLE_EMOJIS = {
 
 
 def format_window_title(title: str) -> str:
-    """Attach a small context emoji to modal titles when helpful."""
+    """Attach a small context emoji to modal titles when helpful"""
     title = title.strip()
     if not title:
         return title

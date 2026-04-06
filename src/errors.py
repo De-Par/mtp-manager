@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class AppError(RuntimeError):
-    """Base typed application error."""
+    """Base typed application error"""
 
     def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
         super().__init__(message)
@@ -11,24 +11,24 @@ class AppError(RuntimeError):
 
 
 class ValidationError(AppError):
-    """Invalid user or config input."""
+    """Invalid user or config input"""
 
 
 class PlatformError(AppError):
-    """Unsupported platform or missing permissions."""
+    """Unsupported platform or missing permissions"""
 
 
 class ShellError(AppError):
-    """Subprocess execution failed."""
+    """Subprocess execution failed"""
 
 
 class ServiceError(AppError):
-    """Service orchestration failed."""
+    """Service orchestration failed"""
 
 
 class DiagnosticError(AppError):
-    """Diagnostics execution failed."""
+    """Diagnostics execution failed"""
 
 
 class SourceBuildRequiredError(AppError):
-    """Requested source ref is not available as a release binary."""
+    """Requested source ref is not available as a release binary"""

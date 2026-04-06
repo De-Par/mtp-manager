@@ -1,4 +1,4 @@
-"""Action definitions and translation helpers for the Textual UI."""
+"""Action definitions and translation helpers for the Textual UI"""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ PRIMARY_ACTION_LIMIT = 6
 
 
 def action_label(action: ActionSpec, translate: TranslatorFn) -> str:
-    """Translate a single action label while preserving explicit fallbacks."""
+    """Translate a single action label while preserving explicit fallbacks"""
     key = ACTION_LABEL_KEYS.get(action.key)
     if key is None:
         return action.label
@@ -63,12 +63,12 @@ def translated_actions(
     actions: list[ActionSpec],
     translate: TranslatorFn,
 ) -> list[ActionSpec]:
-    """Return translated copies of action specs for the current locale."""
+    """Return translated copies of action specs for the current locale"""
     return [ActionSpec(action.key, action_label(action, translate), action.variant, action.classes) for action in actions]
 
 
 def split_actions(actions: list[ActionSpec], primary_action_limit: int = PRIMARY_ACTION_LIMIT) -> tuple[list[ActionSpec], list[ActionSpec]]:
-    """Split actions into the visible row and overflow bucket."""
+    """Split actions into the visible row and overflow bucket"""
     if len(actions) <= primary_action_limit:
         return actions, []
     primary = actions[: primary_action_limit - 1]
@@ -78,7 +78,7 @@ def split_actions(actions: list[ActionSpec], primary_action_limit: int = PRIMARY
 
 
 def configure_actions() -> list[ActionSpec]:
-    """Actions shown in the Configure modal."""
+    """Actions shown in the Configure modal"""
     return [
         ActionSpec("setup", "Setup"),
         ActionSpec("edit_settings", "Edit Settings"),
@@ -88,7 +88,7 @@ def configure_actions() -> list[ActionSpec]:
 
 
 def source_actions() -> list[ActionSpec]:
-    """Actions shown in the Binary modal."""
+    """Actions shown in the Binary modal"""
     return [
         ActionSpec("update_source", "Sync telemt"),
         ActionSpec("rebuild", "Reinstall telemt"),
@@ -97,7 +97,7 @@ def source_actions() -> list[ActionSpec]:
 
 
 def service_actions(service_active: bool) -> list[ActionSpec]:
-    """Actions shown in the Service modal."""
+    """Actions shown in the Service modal"""
     return [
         ActionSpec("service_restart" if service_active else "service_start", "Restart" if service_active else "Start"),
         ActionSpec("service_stop", "Stop"),
@@ -108,7 +108,7 @@ def service_actions(service_active: bool) -> list[ActionSpec]:
 
 
 def primary_screen_actions(current_screen: str, has_history: bool) -> list[ActionSpec]:
-    """Top-level action bar actions for the currently selected workspace."""
+    """Top-level action bar actions for the currently selected workspace"""
     actions: list[ActionSpec] = []
     if has_history and current_screen != "dashboard":
         actions.append(ActionSpec("back", "Back"))

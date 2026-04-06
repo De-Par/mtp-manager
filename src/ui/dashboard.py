@@ -1,4 +1,4 @@
-"""Dashboard rendering and host resource snapshot helpers."""
+"""Dashboard rendering and host resource snapshot helpers"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ TITLE_TEXT_STYLE = "bold #275a45"
 
 
 def render_fields(body: str) -> Text:
-    """Render simple field-style text blocks used outside the dashboard card."""
+    """Render simple field-style text blocks used outside the dashboard card"""
     text = Text()
     for raw_line in body.splitlines():
         line = raw_line.rstrip()
@@ -86,7 +86,7 @@ def _meminfo_values() -> dict[str, int]:
 
 
 def capture_hardware_snapshot() -> list[tuple[str, object]]:
-    """Collect lightweight RAM, swap, disk, and CPU metrics for the dashboard."""
+    """Collect lightweight RAM, swap, disk, and CPU metrics for the dashboard"""
     snapshot: list[tuple[str, object]] = []
     meminfo = _meminfo_values()
     ram_total = meminfo.get("MemTotal", 0)
@@ -125,7 +125,7 @@ def build_status_metrics(
     hardware_snapshot: list[tuple[str, object]],
     translate: StatusTranslateFn,
 ) -> list[tuple[str, object]]:
-    """Build localized status rows for the dashboard card."""
+    """Build localized status rows for the dashboard card"""
     metrics = [
         (translate("service_status"), dashboard.service_status),
         (translate("public_ip"), dashboard.public_ip),
@@ -153,7 +153,7 @@ def render_status_card(
     hardware_snapshot: list[tuple[str, object]],
     translate: StatusTranslateFn,
 ) -> Text:
-    """Render the rich status card shown on the dashboard screen."""
+    """Render the rich status card shown on the dashboard screen"""
     metrics = build_status_metrics(dashboard, hardware_snapshot, translate)
     service_status_label = translate("service_status")
     label_width = max((cell_len(label) for label, _ in metrics if label), default=12) + 2
