@@ -81,12 +81,15 @@ class ValueListItem(ListItem):
 
 
 class SplitHandle(Static):
+    can_focus = True
+
     def __init__(self) -> None:
         super().__init__("│", id="top-split-handle")
         self._dragging = False
 
     async def _on_mouse_down(self, event: events.MouseDown) -> None:
         self._dragging = True
+        self.focus()
         self.capture_mouse()
         event.stop()
         if hasattr(self.app, "set_top_split_from_screen_x"):
@@ -136,10 +139,14 @@ class ManagerTextualApp(App[None]):
 
     CSS = """
     $app-surface: #ffffff;
+    $ui-ink: #1f2937;
+    $ui-accent-ink: #275a45;
+    $ui-border: #d9e7df;
+    $ui-border-active: #96b9a7;
 
     Screen {
         background: $app-surface;
-        color: #14231a;
+        color: $ui-ink;
     }
 
     #topbar {
@@ -247,9 +254,19 @@ class ManagerTextualApp(App[None]):
         margin: 0;
     }
 
+    #top-split-handle:hover {
+        color: #5f8774;
+        background: #f6fbf8;
+    }
+
+    #top-split-handle:focus {
+        color: #4f7464;
+        background: #eef6f1;
+    }
+
     .panel {
         background: $app-surface;
-        border: round #cfe8d7;
+        border: round $ui-border;
         padding: 1;
         margin-bottom: 1;
     }
@@ -257,7 +274,7 @@ class ManagerTextualApp(App[None]):
     .panel-title {
         width: 1fr;
         content-align: center middle;
-        color: #2d6a4f;
+        color: $ui-accent-ink;
         text-style: bold;
         margin: 0 0 1 0;
     }
@@ -268,7 +285,7 @@ class ManagerTextualApp(App[None]):
     }
 
     .content-text {
-        color: #081c15;
+        color: $ui-ink;
         padding: 0 0 1 0;
         background: $app-surface;
     }
@@ -288,26 +305,26 @@ class ManagerTextualApp(App[None]):
 
     .field-label {
         text-style: bold;
-        color: #1b4332;
+        color: #44556a;
     }
 
     ListView {
         background: transparent;
-        color: #081c15;
+        color: $ui-ink;
         border: none;
         height: 1fr;
     }
 
     ListItem {
         background: white;
-        color: #081c15;
+        color: $ui-ink;
         padding: 0 1;
         margin-bottom: 1;
     }
 
     ListItem.-highlight {
         background: #d8f3dc;
-        color: #081c15;
+        color: $ui-ink;
         text-style: bold;
     }
 
@@ -343,8 +360,8 @@ class ManagerTextualApp(App[None]):
 
     #sections-list > ListItem {
         background: $app-surface;
-        border: round #cfe8d7;
-        color: #1b4332;
+        border: round $ui-border;
+        color: $ui-ink;
         padding: 0 2;
         margin-bottom: 0;
         min-height: 3;
@@ -352,27 +369,27 @@ class ManagerTextualApp(App[None]):
 
     #sections-list > ListItem:hover {
         background: #f3fbf5;
-        border: round #95d5b2;
-        color: #1b4332;
+        border: round $ui-border-active;
+        color: $ui-ink;
     }
 
     #sections-list > ListItem.-highlight {
         background: $app-surface;
-        border: round #cfe8d7;
-        color: #1b4332;
+        border: round $ui-border;
+        color: $ui-ink;
     }
 
     #sections-list:focus > ListItem.-highlight {
         background: $app-surface;
-        border: round #cfe8d7;
-        color: #1b4332;
+        border: round $ui-border;
+        color: $ui-ink;
     }
 
     #sections-list > ListItem.-highlight:hover,
     #sections-list:focus > ListItem.-highlight:hover {
         background: #f3fbf5;
-        border: round #95d5b2;
-        color: #1b4332;
+        border: round $ui-border-active;
+        color: $ui-ink;
     }
 
     #explorer-lists {
@@ -388,7 +405,7 @@ class ManagerTextualApp(App[None]):
     .subpanel-title {
         width: 1fr;
         content-align: center middle;
-        color: #40916c;
+        color: $ui-accent-ink;
         text-style: bold;
         margin-bottom: 1;
     }
@@ -467,8 +484,8 @@ class ManagerTextualApp(App[None]):
 
     Button.-style-default {
         background: white;
-        color: #081c15;
-        border: round #95d5b2;
+        color: $ui-ink;
+        border: round $ui-border-active;
         text-style: bold;
     }
 
@@ -478,39 +495,39 @@ class ManagerTextualApp(App[None]):
 
     Button.-style-default:focus {
         background: white;
-        color: #081c15;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     Button.-style-default:hover:focus {
         background: #f4fbf6;
-        color: #081c15;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     Button.-success {
-        background: #f4fbf6;
-        color: #1b4332;
-        border: round #74c69d;
+        background: white;
+        color: $ui-ink;
+        border: round $ui-border-active;
         text-style: bold;
     }
 
     Button.-success:hover {
         background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     Button.-success:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
+        background: #f4fbf6;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     Button.-success:hover:focus {
         background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     Button.-error {
@@ -1037,10 +1054,9 @@ class ManagerTextualApp(App[None]):
         dashboard_mode = self.state.current_screen == "dashboard"
         users_mode = self.state.current_screen == "users"
         self._dashboard_snapshot = self.controller.dashboard() if dashboard_mode else None
-        self.query_one("#sections-title", Static).update(f"🧭 {self._t('sections')}")
+        self.query_one("#sections-title", Static).update(self._t("sections"))
         self.query_one("#overview-title", Static).update(
-            f"{'📡' if dashboard_mode else '👤'} "
-            f"{self._t('server_status_panel' if dashboard_mode else 'overview')}"
+            self._t("server_status_panel" if dashboard_mode else "overview")
         )
         self.query_one("#top-split-handle", SplitHandle).tooltip = self._t(
             "split_resize_hint",

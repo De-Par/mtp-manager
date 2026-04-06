@@ -54,6 +54,10 @@ class ActionSpec:
 class ConfirmScreen(ModalScreen[bool]):
     CSS = """
     $app-surface: #ffffff;
+    $ui-ink: #1f2937;
+    $ui-accent-ink: #275a45;
+    $ui-border: #d9e7df;
+    $ui-border-active: #96b9a7;
 
     ModalScreen {
         background: $app-surface;
@@ -71,7 +75,7 @@ class ConfirmScreen(ModalScreen[bool]):
         min-width: 42;
         height: auto;
         background: $app-surface;
-        border: round #74c69d;
+        border: round $ui-border;
         padding: 1 2;
     }
 
@@ -79,7 +83,7 @@ class ConfirmScreen(ModalScreen[bool]):
         width: 1fr;
         content-align: center middle;
         text-style: bold;
-        color: #2d6a4f;
+        color: $ui-accent-ink;
         margin: 0 0 1 0;
     }
 
@@ -104,27 +108,27 @@ class ConfirmScreen(ModalScreen[bool]):
 
     .dialog-actions Button.-success {
         background: white;
-        color: #1b4332;
-        border: round #74c69d;
+        color: $ui-ink;
+        border: round $ui-border-active;
         text-style: bold;
     }
 
     .dialog-actions Button.-success:hover {
         background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     .dialog-actions Button.-success:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
+        background: #f4fbf6;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     .dialog-actions Button.-success:hover:focus {
         background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        color: $ui-ink;
+        border: round #6f9d86;
     }
 
     .dialog-actions Button.-error {

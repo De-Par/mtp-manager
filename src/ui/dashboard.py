@@ -12,6 +12,8 @@ from rich.text import Text
 from controller import DashboardViewModel
 
 StatusTranslateFn = Callable[[str], str]
+BASE_TEXT_STYLE = "#1f2937"
+TITLE_TEXT_STYLE = "bold #275a45"
 
 
 def render_fields(body: str) -> Text:
@@ -24,12 +26,12 @@ def render_fields(body: str) -> Text:
             continue
         if ": " in line:
             label, value = line.split(": ", 1)
-            text.append(f"{label}: ", style="bold #1b4332")
-            text.append(value)
+            text.append(f"{label}: ", style=BASE_TEXT_STYLE)
+            text.append(value, style=BASE_TEXT_STYLE)
         elif line.startswith("- "):
-            text.append(line)
+            text.append(line, style=BASE_TEXT_STYLE)
         else:
-            text.append(line, style="bold #2d6a4f")
+            text.append(line, style=TITLE_TEXT_STYLE)
         text.append("\n")
     return text
 
@@ -59,7 +61,7 @@ def _usage_percent_style(percent: float) -> str:
 def _usage_metric_text(used: int, total: int) -> Text:
     percent = (used / total * 100) if total > 0 else 0.0
     text = Text()
-    text.append(f"{_format_bytes(used)} / {_format_bytes(total)} ")
+    text.append(f"{_format_bytes(used)} / {_format_bytes(total)} ", style=BASE_TEXT_STYLE)
     text.append(f"{percent:.0f}%", style=_usage_percent_style(percent))
     return text
 
@@ -141,8 +143,8 @@ def _status_indicator(value: str) -> Text:
     state = value.lower()
     indicator = "🟢" if state == "active" else "🟡" if state in {"activating", "reloading"} else "🔴"
     text = Text()
-    text.append(f"{indicator} ", style="bold")
-    text.append(value)
+    text.append(f"{indicator} ")
+    text.append(value, style=BASE_TEXT_STYLE)
     return text
 
 
@@ -162,14 +164,14 @@ def render_status_card(
             continue
         line = Text()
         line.append(" ")
-        line.append(label.ljust(label_width), style="bold #1b4332")
-        line.append(" : ", style="bold #1b4332")
+        line.append(label.ljust(label_width), style=BASE_TEXT_STYLE)
+        line.append(" : ", style=BASE_TEXT_STYLE)
         if label == service_status_label and isinstance(value, str):
             value_renderable = _status_indicator(value)
         elif isinstance(value, Text):
             value_renderable = value
         else:
-            value_renderable = Text(str(value))
+            value_renderable = Text(str(value), style=BASE_TEXT_STYLE)
         line.append_text(value_renderable)
         line.append("\n")
         text.append_text(line)
