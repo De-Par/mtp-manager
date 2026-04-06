@@ -104,10 +104,41 @@ class SplitHandle(Static):
             event.stop()
 
 
+class TopbarClose(Container):
+    can_focus = True
+
+    def __init__(self) -> None:
+        super().__init__(id="topbar-close")
+
+    def compose(self) -> ComposeResult:
+        yield Static("×", id="topbar-close-glyph")
+
+    async def _on_mouse_down(self, event: events.MouseDown) -> None:
+        self.focus()
+        event.stop()
+
+    async def _on_click(self, event: events.Click) -> None:
+        event.stop()
+        if hasattr(self.app, "_open_quit_confirmation"):
+            self.app._open_quit_confirmation()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key in {"enter", "space"}:
+            event.stop()
+            if hasattr(self.app, "_open_quit_confirmation"):
+                self.app._open_quit_confirmation()
+
+
 class ManagerTextualApp(App[None]):
+    TOP_SPLIT_HANDLE_WIDTH = 3
+    MIN_OVERVIEW_WIDTH = 28
+    TOP_ROW_CHROME_WIDTH = 6
+
     CSS = """
+    $app-surface: #ffffff;
+
     Screen {
-        background: #f4fbf6;
+        background: $app-surface;
         color: #14231a;
     }
 
@@ -118,7 +149,7 @@ class ManagerTextualApp(App[None]):
         align: center middle;
         background: #1b4332;
         color: #ffffff;
-        padding: 0 1 0 3;
+        padding: 0 0 0 3;
         text-style: bold;
     }
 
@@ -135,7 +166,6 @@ class ManagerTextualApp(App[None]):
         width: 5;
         min-width: 5;
         height: 3;
-        content-align: center middle;
         align: center middle;
         background: #1b4332;
         color: #ffffff;
@@ -145,22 +175,33 @@ class ManagerTextualApp(App[None]):
         text-style: bold;
     }
 
+    #topbar-close-glyph {
+        width: 1fr;
+        height: 1fr;
+        content-align: center middle;
+        text-align: center;
+        color: #ffffff;
+        background: transparent;
+        text-style: bold;
+    }
+
     #topbar-close:hover {
         background: #24533d;
         color: white;
-        border: round #74c69d;
+        border: none;
     }
 
     #topbar-close:focus {
         background: #24533d;
         color: white;
-        border: round #95d5b2;
+        border: none;
     }
 
     #root {
         layout: vertical;
         height: 1fr;
         padding: 1;
+        background: $app-surface;
     }
 
     .row {
@@ -184,11 +225,15 @@ class ManagerTextualApp(App[None]):
     #sections-panel {
         width: 1fr;
         min-width: 20;
+        background: $app-surface;
     }
 
     #overview-panel,
-    #activity-panel {
+    #activity-panel,
+    #explorer-panel,
+    #actions-panel {
         width: 1fr;
+        background: $app-surface;
     }
 
     #top-split-handle {
@@ -203,7 +248,7 @@ class ManagerTextualApp(App[None]):
     }
 
     .panel {
-        background: white;
+        background: $app-surface;
         border: round #cfe8d7;
         padding: 1;
         margin-bottom: 1;
@@ -219,11 +264,13 @@ class ManagerTextualApp(App[None]):
 
     .content-scroll {
         height: 1fr;
+        background: $app-surface;
     }
 
     .content-text {
         color: #081c15;
         padding: 0 0 1 0;
+        background: $app-surface;
     }
 
     .content-scroll,
@@ -273,6 +320,61 @@ class ManagerTextualApp(App[None]):
         width: 1fr;
     }
 
+    #sections-list {
+        padding: 0 1;
+        background: $app-surface;
+    }
+
+    #overview-scroll,
+    #activity-scroll,
+    #explorer-lists,
+    #users-subpanel,
+    #secrets-subpanel,
+    #users-list,
+    #secrets-list {
+        background: $app-surface;
+    }
+
+    #sections-list .list-label {
+        content-align: center middle;
+        text-align: center;
+        text-style: bold;
+    }
+
+    #sections-list > ListItem {
+        background: $app-surface;
+        border: round #cfe8d7;
+        color: #1b4332;
+        padding: 0 2;
+        margin-bottom: 0;
+        min-height: 3;
+    }
+
+    #sections-list > ListItem:hover {
+        background: #f3fbf5;
+        border: round #95d5b2;
+        color: #1b4332;
+    }
+
+    #sections-list > ListItem.-highlight {
+        background: $app-surface;
+        border: round #cfe8d7;
+        color: #1b4332;
+    }
+
+    #sections-list:focus > ListItem.-highlight {
+        background: $app-surface;
+        border: round #cfe8d7;
+        color: #1b4332;
+    }
+
+    #sections-list > ListItem.-highlight:hover,
+    #sections-list:focus > ListItem.-highlight:hover {
+        background: #f3fbf5;
+        border: round #95d5b2;
+        color: #1b4332;
+    }
+
     #explorer-lists {
         height: 1fr;
     }
@@ -297,8 +399,11 @@ class ManagerTextualApp(App[None]):
 
     #actions-panel {
         height: auto;
-        min-height: 5;
-        padding-bottom: 1;
+        min-height: 3;
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
     }
 
     #busy-overlay {
@@ -307,7 +412,7 @@ class ManagerTextualApp(App[None]):
         height: 1fr;
         display: none;
         align: center middle;
-        background: #edf7f1;
+        background: transparent;
     }
 
     #busy-dialog {
@@ -317,6 +422,7 @@ class ManagerTextualApp(App[None]):
         color: #d1d5db;
         border: none;
         padding: 1 2;
+        offset: 0 -1;
     }
 
     #busy-label {
@@ -335,12 +441,14 @@ class ManagerTextualApp(App[None]):
 
     #actions-scroll {
         height: auto;
+        margin: 0;
     }
 
     #actions-container {
         width: 1fr;
         height: auto;
         align: center middle;
+        padding: 0;
     }
 
     .action-button {
@@ -354,6 +462,7 @@ class ManagerTextualApp(App[None]):
         height: 3;
         padding: 0 2;
         content-align: center middle;
+        text-style: bold;
     }
 
     Button.-style-default {
@@ -517,7 +626,7 @@ class ManagerTextualApp(App[None]):
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
             yield Static("", id="topbar-title")
-            yield Button("✕", id="topbar-close", classes="topbar-close")
+            yield TopbarClose()
         with Vertical(id="root"):
             with Horizontal(id="row-primary", classes="row"):
                 with Vertical(classes="panel", id="sections-panel"):
@@ -542,8 +651,7 @@ class ManagerTextualApp(App[None]):
                     yield Static("", classes="panel-title", id="activity-title")
                     with VerticalScroll(classes="content-scroll", id="activity-scroll"):
                         yield Static("", id="activity-content", classes="content-text")
-            with Vertical(classes="panel", id="actions-panel"):
-                yield Static("", classes="panel-title", id="actions-title")
+            with Vertical(id="actions-panel"):
                 with HorizontalScroll(id="actions-scroll"):
                     yield Horizontal(id="actions-container")
         with Container(id="busy-overlay"):
@@ -556,7 +664,7 @@ class ManagerTextualApp(App[None]):
         await self.refresh_ui()
         self._sync_layout_mode(self.size.width)
         self._apply_top_split()
-        self.query_one("#sections-list", ListView).focus()
+        self.set_focus(None)
 
     def on_resize(self, event: events.Resize) -> None:
         self._sync_layout_mode(event.size.width)
@@ -564,7 +672,7 @@ class ManagerTextualApp(App[None]):
 
     def _sync_layout_mode(self, width: int) -> None:
         root = self.query_one("#root", Vertical)
-        if width < 95:
+        if width < self._top_row_min_width():
             root.add_class("compact")
         else:
             root.remove_class("compact")
@@ -572,6 +680,14 @@ class ManagerTextualApp(App[None]):
     def _section_min_width(self) -> int:
         labels = [self._screen_menu_label(screen) for screen in SCREEN_ORDER]
         return max(22, max(cell_len(label) for label in labels) + 6)
+
+    def _top_row_min_width(self) -> int:
+        return (
+            self._section_min_width()
+            + self.MIN_OVERVIEW_WIDTH
+            + self.TOP_SPLIT_HANDLE_WIDTH
+            + self.TOP_ROW_CHROME_WIDTH
+        )
 
     def _apply_top_split(self) -> None:
         root = self.query_one("#root", Vertical)
@@ -584,9 +700,9 @@ class ManagerTextualApp(App[None]):
         row = self.query_one("#row-primary", Horizontal)
         total_width = max(40, row.size.width)
         handle.display = True
-        handle_width = 3
+        handle_width = self.TOP_SPLIT_HANDLE_WIDTH
         min_section = self._section_min_width()
-        min_overview = 28
+        min_overview = self.MIN_OVERVIEW_WIDTH
         target = int(total_width * self._top_split_ratio)
         max_section = max(min_section, total_width - min_overview - handle_width)
         section_width = max(min_section, min(target, max_section))
@@ -921,15 +1037,22 @@ class ManagerTextualApp(App[None]):
         dashboard_mode = self.state.current_screen == "dashboard"
         users_mode = self.state.current_screen == "users"
         self._dashboard_snapshot = self.controller.dashboard() if dashboard_mode else None
-        self.query_one("#sections-title", Static).update(f"🌱 {self._t('sections')}")
+        self.query_one("#sections-title", Static).update(f"🧭 {self._t('sections')}")
         self.query_one("#overview-title", Static).update(
             f"{'📡' if dashboard_mode else '👤'} "
             f"{self._t('server_status_panel' if dashboard_mode else 'overview')}"
         )
+        self.query_one("#top-split-handle", SplitHandle).tooltip = self._t(
+            "split_resize_hint",
+            "Drag to resize panels",
+        )
+        self.query_one("#topbar-close", TopbarClose).tooltip = self._t(
+            "quit_app_hint",
+            "Close application",
+        )
         self.query_one("#explorer-title", Static).update(f"👥 {self._t('users_secrets')}")
         self.query_one("#users-title", Static).update(self._t("users"))
         self.query_one("#secrets-title", Static).update(self._t("secrets"))
-        self.query_one("#actions-title", Static).update(f"🧰 {self._t('actions')}")
         self.query_one("#overview-content", Static).update(
             render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
             if dashboard_mode
@@ -1111,10 +1234,6 @@ class ManagerTextualApp(App[None]):
         if self._busy:
             return
         button_id = event.button.id or ""
-        if button_id == "topbar-close":
-            event.stop()
-            self._open_quit_confirmation()
-            return
         if not button_id.startswith("action-"):
             return
         action = button_id.removeprefix("action-")

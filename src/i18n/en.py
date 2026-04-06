@@ -83,6 +83,8 @@ CATALOG = {
     "use_actions_service": "Use actions to start, stop, restart, or inspect the service.",
     "service_dashboard_controls": "Dashboard contains the main service controls.",
     "service_screen_focus": "Use this screen for detailed status, logs, and unit preview.",
+    "split_resize_hint": "Drag to resize panels",
+    "quit_app_hint": "Close application",
     "maintenance_factory_reset": "Factory reset managed state",
     "language_changed": "Language updated.",
     "settings_saved_applied": "Settings saved and applied.",

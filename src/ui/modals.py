@@ -21,6 +21,8 @@ WINDOW_TITLE_EMOJIS = {
     "service": "🔧",
     "service control": "🔧",
     "service logs": "📜",
+    "quit": "🚪",
+    "выход": "🚪",
     "add user": "👤",
     "add secret": "🔐",
     "delete user": "🗑️",
@@ -51,8 +53,10 @@ class ActionSpec:
 
 class ConfirmScreen(ModalScreen[bool]):
     CSS = """
+    $app-surface: #ffffff;
+
     ModalScreen {
-        background: #f4fbf6;
+        background: $app-surface;
     }
 
     #confirm-overlay {
@@ -66,7 +70,7 @@ class ConfirmScreen(ModalScreen[bool]):
         max-width: 72;
         min-width: 42;
         height: auto;
-        background: white;
+        background: $app-surface;
         border: round #74c69d;
         padding: 1 2;
     }
@@ -88,6 +92,14 @@ class ConfirmScreen(ModalScreen[bool]):
     .dialog-actions Button {
         width: 16;
         margin: 0 1;
+    }
+
+    Button {
+        min-width: 9;
+        height: 3;
+        padding: 0 2;
+        content-align: center middle;
+        text-style: bold;
     }
 
     .dialog-actions Button.-success {
@@ -323,7 +335,6 @@ class MenuModalScreen(ModalScreen[str | None]):
         background: white;
         color: #081c15;
         border: round #95d5b2;
-        text-style: bold;
     }
 
     Button.menu-button:hover {
@@ -579,8 +590,10 @@ class ServiceMenuScreen(MenuModalScreen):
 
 class FullscreenTextScreen(ModalScreen[str | None]):
     CSS = """
+    $app-surface: #ffffff;
+
     ModalScreen {
-        background: #f4fbf6;
+        background: $app-surface;
     }
 
     #viewer-overlay {
@@ -593,7 +606,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         width: 1fr;
         height: 1fr;
         margin: 1 2;
-        background: white;
+        background: $app-surface;
         border: round #74c69d;
         padding: 1 2;
     }
@@ -608,21 +621,24 @@ class FullscreenTextScreen(ModalScreen[str | None]):
 
     #viewer-scroll {
         height: 1fr;
-        border: round #d7ebe0;
+        background: #111315;
+        color: #f5f7f6;
+        border: round #2d3b34;
         padding: 0 1;
         margin-bottom: 1;
         scrollbar-color: #8fd3ac;
         scrollbar-color-hover: #74c69d;
         scrollbar-color-active: #2d6a4f;
-        scrollbar-background: #f8fcf9;
-        scrollbar-background-hover: #f1f8f3;
-        scrollbar-background-active: #e7f4ea;
+        scrollbar-background: #151b18;
+        scrollbar-background-hover: #1d2521;
+        scrollbar-background-active: #243029;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
     }
 
     #viewer-body {
-        color: #081c15;
+        color: #f5f7f6;
+        background: #111315;
     }
 
     #viewer-actions {
