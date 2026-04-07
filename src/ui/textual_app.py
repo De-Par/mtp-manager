@@ -434,12 +434,12 @@ class ManagerTextualApp(App[None]):
     }
 
     #busy-dialog {
-        width: 26;
+        width: 32;
         height: auto;
         background: #364152;
         color: #d1d5db;
         border: none;
-        padding: 1 2;
+        padding: 1 3;
         offset: 0 -1;
     }
 
@@ -467,6 +467,30 @@ class ManagerTextualApp(App[None]):
         height: auto;
         align: center middle;
         padding: 0;
+    }
+
+    ToastRack {
+        margin-bottom: 1;
+    }
+
+    Toast {
+        width: 76;
+        max-width: 72%;
+        padding: 1 2;
+        background: #364152;
+        color: #d1d5db;
+    }
+
+    Toast.-information {
+        border-left: outer #37b24d;
+    }
+
+    Toast.-warning {
+        border-left: outer #e9c46a;
+    }
+
+    Toast.-error {
+        border-left: outer #e03131;
     }
 
     .action-button {
@@ -866,9 +890,9 @@ class ManagerTextualApp(App[None]):
     def _busy_dialog_width(self) -> int:
         label_width = cell_len(f"{BUSY_FRAMES[self._busy_frame_index]} {self._busy_label}")
         content_width = max(18, label_width)
-        desired_width = content_width + 4
-        available_width = max(26, self.size.width - 6)
-        return max(26, min(desired_width, available_width))
+        desired_width = max(32, content_width + 6)
+        available_width = max(20, min(76, self.size.width - 4, max(20, int(self.size.width * 0.72))))
+        return max(20, min(desired_width, available_width))
 
     def _set_actions_disabled(self, disabled: bool) -> None:
         for widget in self.query(".action-button"):
