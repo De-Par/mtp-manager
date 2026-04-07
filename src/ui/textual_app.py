@@ -1670,7 +1670,7 @@ class ManagerTextualApp(App[None]):
                 busy_label=f"{self._t('factory_reset', 'Factory Reset')}...",
             )
             return
-        self.call_after_refresh(self._restore_default_focus)
+        self._open_configure_menu()
 
     def _open_quit_confirmation(self) -> None:
         self.push_screen(
