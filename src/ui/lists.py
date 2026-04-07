@@ -82,9 +82,13 @@ def section_values(current_screen: str) -> tuple[list[str], int]:
     return list(SCREEN_ORDER), SCREEN_ORDER.index(normalized_screen)
 
 
-def user_entries(users_snapshot: list[UserRecord], selected_user: str | None) -> tuple[list[tuple[str, str]], int | None]:
+def user_entries(
+    users_snapshot: list[UserRecord],
+    selected_user: str | None,
+    translate: LabelTranslateFn,
+) -> tuple[list[tuple[str, str]], int | None]:
     """Return visible rows and selected index for the users list"""
-    items = [(user.name, f"{user.name} [{'on' if user.enabled else 'off'}]") for user in users_snapshot]
+    items = [(user.name, f"{user.name} [{translate('on' if user.enabled else 'off', 'on' if user.enabled else 'off')}]") for user in users_snapshot]
     names = [user.name for user in users_snapshot]
     index = names.index(selected_user) if selected_user in names else None
     return items, index

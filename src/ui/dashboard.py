@@ -96,14 +96,14 @@ def capture_hardware_snapshot() -> list[tuple[str, object]]:
         snapshot.extend(
             [
                 ("", ""),
-                ("RAM", _usage_metric_text(ram_used, ram_total)),
+                ("ram", _usage_metric_text(ram_used, ram_total)),
             ]
         )
         swap_total = meminfo.get("SwapTotal", 0)
         swap_free = meminfo.get("SwapFree", 0)
         if swap_total > 0:
             swap_used = max(0, swap_total - swap_free)
-            snapshot.append(("Swap", _usage_metric_text(swap_used, swap_total)))
+            snapshot.append(("swap", _usage_metric_text(swap_used, swap_total)))
     try:
         disk = shutil.disk_usage("/")
     except OSError:
@@ -111,12 +111,12 @@ def capture_hardware_snapshot() -> list[tuple[str, object]]:
     if disk is not None:
         if not snapshot:
             snapshot.append(("", ""))
-        snapshot.append(("Disk", _usage_metric_text(disk.used, disk.total)))
+        snapshot.append(("disk", _usage_metric_text(disk.used, disk.total)))
     cpu_count = os.cpu_count()
     if cpu_count:
         if not snapshot:
             snapshot.append(("", ""))
-        snapshot.append(("CPU cores", str(cpu_count)))
+        snapshot.append(("cpu_cores", str(cpu_count)))
     return snapshot
 
 
@@ -126,22 +126,29 @@ def build_status_metrics(
     translate: StatusTranslateFn,
 ) -> list[tuple[str, object]]:
     """Build localized status rows for the dashboard card"""
+    service_status = translate(dashboard.service_status.lower().replace("-", "_").replace(" ", "_"))
+    if service_status == dashboard.service_status.lower().replace("-", "_").replace(" ", "_"):
+        service_status = dashboard.service_status
     metrics = [
-        (translate("service_status"), dashboard.service_status),
+        (translate("service_status"), service_status),
         (translate("public_ip"), dashboard.public_ip),
-        ("telemt version", dashboard.telemt_version),
-        ("Proxy port", str(dashboard.mt_port)),
-        ("API port", str(dashboard.stats_port)),
-        (translate("fake_tls"), dashboard.fake_tls_domain or "disabled"),
+        (translate("telemt_version"), dashboard.telemt_version),
+        (translate("proxy_port"), str(dashboard.mt_port)),
+        (translate("api_port"), str(dashboard.stats_port)),
+        (translate("fake_tls"), dashboard.fake_tls_domain or translate("disabled")),
         (translate("users_count"), str(dashboard.users_count)),
         (translate("secrets_count"), str(dashboard.secrets_count)),
     ]
-    return [*metrics, *hardware_snapshot]
+    localized_hardware = [
+        (translate(label), value) if label else (label, value)
+        for label, value in hardware_snapshot
+    ]
+    return [*metrics, *localized_hardware]
 
 
-def _status_indicator(value: str) -> Text:
-    state = value.lower()
-    indicator = "🟢" if state == "active" else "🟡" if state in {"activating", "reloading"} else "🔴"
+def _status_indicator(value: str, *, state: str | None = None) -> Text:
+    normalized_state = (state or value).lower().replace("-", "_").replace(" ", "_")
+    indicator = "🟢" if normalized_state == "active" else "🟡" if normalized_state in {"activating", "reloading"} else "🔴"
     text = Text()
     text.append(f"{indicator} ")
     text.append(value, style=BASE_TEXT_STYLE)
@@ -167,7 +174,7 @@ def render_status_card(
         line.append(label.ljust(label_width), style=BASE_TEXT_STYLE)
         line.append(" : ", style=BASE_TEXT_STYLE)
         if label == service_status_label and isinstance(value, str):
-            value_renderable = _status_indicator(value)
+            value_renderable = _status_indicator(value, state=dashboard.service_status)
         elif isinstance(value, Text):
             value_renderable = value
         else:

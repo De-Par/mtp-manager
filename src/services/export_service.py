@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
 
 from models.export import ExportBundle, ExportLinkSet
 from models.secret import SecretRecord, UserRecord
 from models.settings import AppSettings
+
+TranslateFn = Callable[[str, str | None], str]
 
 
 class ExportService:
@@ -48,22 +51,27 @@ class ExportService:
             ),
         )
 
-    def render_bundles(self, bundles: list[ExportBundle]) -> str:
+    def render_bundles(self, bundles: list[ExportBundle], translate: TranslateFn | None = None) -> str:
+        def tr(key: str, default: str | None = None) -> str:
+            if translate is None:
+                return default or key
+            return translate(key, default)
+
         lines: list[str] = []
         for bundle in bundles:
             lines.extend(
                 [
-                    f"User: {bundle.user} / Secret ID: {bundle.secret_id}",
-                    f"Endpoint: {bundle.endpoint}",
-                    f"Raw: {bundle.links.raw_secret}",
+                    f"{tr('user_label', 'User')}: {bundle.user} / {tr('secret_id', 'Secret ID')}: {bundle.secret_id}",
+                    f"{tr('endpoint', 'Endpoint')}: {bundle.endpoint}",
+                    f"{tr('raw_secret', 'Raw')}: {bundle.links.raw_secret}",
                     f"DD: {bundle.links.padded_secret}",
-                    f"EE: {bundle.links.fake_tls_secret or 'disabled'}",
-                    f"tg raw: {bundle.links.tg_raw}",
-                    f"t.me raw: {bundle.links.tme_raw}",
-                    f"tg dd: {bundle.links.tg_padded}",
-                    f"t.me dd: {bundle.links.tme_padded}",
-                    f"tg ee: {bundle.links.tg_fake_tls or 'disabled'}",
-                    f"t.me ee: {bundle.links.tme_fake_tls or 'disabled'}",
+                    f"EE: {bundle.links.fake_tls_secret or tr('disabled', 'disabled')}",
+                    f"{tr('tg_raw', 'tg raw')}: {bundle.links.tg_raw}",
+                    f"{tr('tme_raw', 't.me raw')}: {bundle.links.tme_raw}",
+                    f"{tr('tg_dd', 'tg dd')}: {bundle.links.tg_padded}",
+                    f"{tr('tme_dd', 't.me dd')}: {bundle.links.tme_padded}",
+                    f"{tr('tg_ee', 'tg ee')}: {bundle.links.tg_fake_tls or tr('disabled', 'disabled')}",
+                    f"{tr('tme_ee', 't.me ee')}: {bundle.links.tme_fake_tls or tr('disabled', 'disabled')}",
                     "",
                 ]
             )

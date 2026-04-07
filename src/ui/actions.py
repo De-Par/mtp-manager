@@ -73,37 +73,37 @@ def split_actions(actions: list[ActionSpec], primary_action_limit: int = PRIMARY
         return actions, []
     primary = actions[: primary_action_limit - 1]
     secondary = actions[primary_action_limit - 1 :]
-    primary.append(ActionSpec("more", "More"))
+    primary.append(ActionSpec("more", "more"))
     return primary, secondary
 
 
 def configure_actions() -> list[ActionSpec]:
     """Actions shown in the Configure modal"""
     return [
-        ActionSpec("setup", "Setup"),
-        ActionSpec("edit_settings", "Edit Settings"),
-        ActionSpec("source_menu", "Binary"),
-        ActionSpec("factory_reset", "Factory Reset", "error"),
+        ActionSpec("setup", "setup"),
+        ActionSpec("edit_settings", "edit_settings"),
+        ActionSpec("source_menu", "source_menu"),
+        ActionSpec("factory_reset", "factory_reset", "error"),
     ]
 
 
 def source_actions() -> list[ActionSpec]:
     """Actions shown in the Binary modal"""
     return [
-        ActionSpec("update_source", "Sync telemt"),
-        ActionSpec("rebuild", "Reinstall telemt"),
-        ActionSpec("install_ref", "Install tag / commit"),
+        ActionSpec("update_source", "update_source"),
+        ActionSpec("rebuild", "rebuild"),
+        ActionSpec("install_ref", "install_ref"),
     ]
 
 
 def service_actions(service_active: bool) -> list[ActionSpec]:
     """Actions shown in the Service modal"""
     return [
-        ActionSpec("service_restart" if service_active else "service_start", "Restart" if service_active else "Start"),
-        ActionSpec("service_stop", "Stop"),
-        ActionSpec("service_status", "Status"),
-        ActionSpec("service_logs", "Logs"),
-        ActionSpec("service_cleanup", "Cleanup", "warning"),
+        ActionSpec("service_restart" if service_active else "service_start", "service_restart" if service_active else "service_start"),
+        ActionSpec("service_stop", "service_stop"),
+        ActionSpec("service_status", "service_status"),
+        ActionSpec("service_logs", "service_logs"),
+        ActionSpec("service_cleanup", "service_cleanup", "warning"),
     ]
 
 
@@ -111,33 +111,33 @@ def primary_screen_actions(current_screen: str, has_history: bool) -> list[Actio
     """Top-level action bar actions for the currently selected workspace"""
     actions: list[ActionSpec] = []
     if has_history and current_screen != "dashboard":
-        actions.append(ActionSpec("back", "Back"))
+        actions.append(ActionSpec("back", "back"))
     if current_screen == "dashboard":
         actions.extend(
             [
-                ActionSpec("refresh", "Refresh"),
-                ActionSpec("configure_menu", "Configure"),
-                ActionSpec("service_menu", "Service"),
+                ActionSpec("refresh", "refresh"),
+                ActionSpec("configure_menu", "configure_menu"),
+                ActionSpec("service_menu", "service_menu"),
             ]
         )
         return actions
     if current_screen == "users":
         actions.extend(
             [
-                ActionSpec("add_user", "Add User", "success"),
-                ActionSpec("delete_user", "Delete User", "error"),
-                ActionSpec("add_secret", "Add Secret"),
-                ActionSpec("delete_secret", "Delete Secret", "error"),
-                ActionSpec("show_export", "Show Export"),
-                ActionSpec("enable_user", "Enable User"),
-                ActionSpec("disable_user", "Disable User"),
-                ActionSpec("rotate_user", "Rotate User"),
-                ActionSpec("enable_secret", "Enable Secret"),
-                ActionSpec("disable_secret", "Disable Secret"),
-                ActionSpec("rotate_secret", "Rotate Secret"),
-                ActionSpec("export_to_file", "Export To File"),
+                ActionSpec("add_user", "add_user", "success"),
+                ActionSpec("delete_user", "delete_user", "error"),
+                ActionSpec("add_secret", "add_secret"),
+                ActionSpec("delete_secret", "delete_secret", "error"),
+                ActionSpec("show_export", "show_export"),
+                ActionSpec("enable_user", "enable_user"),
+                ActionSpec("disable_user", "disable_user"),
+                ActionSpec("rotate_user", "rotate_user"),
+                ActionSpec("enable_secret", "enable_secret"),
+                ActionSpec("disable_secret", "disable_secret"),
+                ActionSpec("rotate_secret", "rotate_secret"),
+                ActionSpec("export_to_file", "export_to_file"),
             ]
         )
         return actions
-    actions.append(ActionSpec("clear_activity", "Clear Activity"))
+    actions.append(ActionSpec("clear_activity", "clear_activity"))
     return actions

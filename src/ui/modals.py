@@ -192,8 +192,9 @@ class ConfirmScreen(ModalScreen[bool]):
         self,
         title: str,
         message: str,
-        confirm_label: str = "Confirm",
+        confirm_label: str = "confirm",
         *,
+        cancel_label: str = "cancel",
         confirm_variant: str = "success",
         center_message: bool = False,
     ) -> None:
@@ -201,6 +202,7 @@ class ConfirmScreen(ModalScreen[bool]):
         self.title_text = title
         self.message_text = message
         self.confirm_label = confirm_label
+        self.cancel_label = cancel_label
         self.confirm_variant = confirm_variant
         self.center_message = center_message
 
@@ -210,7 +212,7 @@ class ConfirmScreen(ModalScreen[bool]):
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
                 yield Static(self.message_text, classes="dialog-message-center" if self.center_message else "")
                 with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
+                    yield Button(self.cancel_label, id="cancel")
                     yield Button(self.confirm_label, id="confirm", variant=self.confirm_variant)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -228,12 +230,23 @@ class TextInputScreen(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, title: str, label: str, *, value: str = "", password: bool = False) -> None:
+    def __init__(
+        self,
+        title: str,
+        label: str,
+        *,
+        value: str = "",
+        password: bool = False,
+        save_label: str = "save",
+        cancel_label: str = "cancel",
+    ) -> None:
         super().__init__()
         self.title_text = title
         self.label_text = label
         self.initial_value = value
         self.password = password
+        self.save_label = save_label
+        self.cancel_label = cancel_label
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
@@ -242,8 +255,8 @@ class TextInputScreen(ModalScreen[str | None]):
                 yield Static(self.label_text)
                 yield Input(value=self.initial_value, password=self.password, id="value")
                 with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
-                    yield Button("Save", id="save", variant="success")
+                    yield Button(self.cancel_label, id="cancel")
+                    yield Button(self.save_label, id="save", variant="success")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
@@ -280,27 +293,47 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
     }
     """
 
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(
+        self,
+        settings: AppSettings,
+        *,
+        title: str = "edit_settings",
+        save_label: str = "save",
+        cancel_label: str = "cancel",
+        mt_port_label: str = "proxy_port",
+        stats_port_label: str = "api_port",
+        workers_label: str = "workers",
+        fake_tls_domain_label: str = "fake_tls_domain",
+        ad_tag_label: str = "ad_tag",
+    ) -> None:
         super().__init__()
         self.settings = settings
+        self.title_text = title
+        self.save_label = save_label
+        self.cancel_label = cancel_label
+        self.mt_port_label = mt_port_label
+        self.stats_port_label = stats_port_label
+        self.workers_label = workers_label
+        self.fake_tls_domain_label = fake_tls_domain_label
+        self.ad_tag_label = ad_tag_label
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
-                yield Static(format_window_title("Edit Settings"), classes="dialog-title")
-                yield Static("Proxy port", classes="field-label")
+                yield Static(format_window_title(self.title_text), classes="dialog-title")
+                yield Static(self.mt_port_label, classes="field-label")
                 yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
-                yield Static("API port", classes="field-label")
+                yield Static(self.stats_port_label, classes="field-label")
                 yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
-                yield Static("Workers (compat)", classes="field-label")
+                yield Static(self.workers_label, classes="field-label")
                 yield Input(str(self.settings.workers), id="workers", type="integer")
-                yield Static("Fake TLS domain", classes="field-label")
+                yield Static(self.fake_tls_domain_label, classes="field-label")
                 yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
-                yield Static("Ad tag", classes="field-label")
+                yield Static(self.ad_tag_label, classes="field-label")
                 yield Input(self.settings.ad_tag, id="ad_tag")
                 with Horizontal(classes="dialog-actions"):
-                    yield Button("Cancel", id="cancel")
-                    yield Button("Save", id="save", variant="success")
+                    yield Button(self.cancel_label, id="cancel")
+                    yield Button(self.save_label, id="save", variant="success")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
@@ -477,11 +510,12 @@ class MenuModalScreen(ModalScreen[str | None]):
         ("escape", "dismiss_none", "Close"),
     ]
 
-    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = False) -> None:
+    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = False, close_label: str = "close") -> None:
         super().__init__()
         self.title_text = title
         self.actions = actions
         self.auto_focus_first = auto_focus_first
+        self.close_label = close_label
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
@@ -491,7 +525,7 @@ class MenuModalScreen(ModalScreen[str | None]):
                     for action in self.actions:
                         yield Button(action.label, id=f"menu-{action.key}", variant=action.variant, classes="menu-button")
                 with Horizontal(classes="dialog-actions"):
-                    yield Button("Close", id="cancel", classes="dialog-close")
+                    yield Button(self.close_label, id="cancel", classes="dialog-close")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()
@@ -567,8 +601,9 @@ class ServiceMenuScreen(MenuModalScreen):
         *,
         open_status: Callable[[], None],
         open_logs: Callable[[], None],
+        close_label: str = "close",
     ) -> None:
-        super().__init__(title, actions, auto_focus_first=False)
+        super().__init__(title, actions, auto_focus_first=False, close_label=close_label)
         self.open_status = open_status
         self.open_logs = open_logs
 
@@ -733,6 +768,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         clear_before_close: bool = False,
         actions: list[ActionSpec] | None = None,
         action_handler: Callable[[str], bool] | None = None,
+        close_label: str = "close",
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -741,6 +777,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         self.clear_before_close = clear_before_close
         self.actions = actions or []
         self.action_handler = action_handler
+        self.close_label = close_label
         self._close_started = False
 
     def compose(self) -> ComposeResult:
@@ -754,7 +791,7 @@ class FullscreenTextScreen(ModalScreen[str | None]):
                         for action in self.actions:
                             yield Button(action.label, id=f"viewer-{action.key}", variant=action.variant, classes=action.classes)
                     with Horizontal(id="viewer-actions-center"):
-                        yield Button("Close", id="close", classes="viewer-close")
+                        yield Button(self.close_label, id="close", classes="viewer-close")
                     yield Static("", id="viewer-actions-right")
 
     def on_mount(self) -> None:

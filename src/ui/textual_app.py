@@ -19,6 +19,7 @@ from textual.widgets import Button, Label, ListItem, ListView, Static
 from textual.worker import Worker, WorkerState
 
 from controller import AppController, DashboardViewModel
+from errors import AppError
 from models.secret import SecretRecord, UserRecord
 from ui.actions import (
     action_label,
@@ -622,7 +623,7 @@ class ManagerTextualApp(App[None]):
             status_message="",
             selected_user=None,
             selected_secret_id=None,
-            output_title="Activity",
+            output_title="",
             output_body="",
         )
         self.users_snapshot: list[UserRecord] = []
@@ -848,7 +849,7 @@ class ManagerTextualApp(App[None]):
         selected_user = self._get_selected_user()
         if self.state.current_screen == "users":
             if selected_user is None:
-                return "No users yet.\n\n" + self._t("use_actions_users")
+                return self._t("no_users_yet") + "\n\n" + self._t("use_actions_users")
             return self.controller.selected_detail_text(self.state.selected_user, self.state.selected_secret_id)
         return self._t("service_dashboard_controls")
 
@@ -945,7 +946,7 @@ class ManagerTextualApp(App[None]):
 
     def _service_logs_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("clear_service_logs", "Clean", "error", "viewer-danger-action"),
+            ActionSpec("clear_service_logs", self._t("clean", "Clean"), "error", "viewer-danger-action"),
         ]
 
     def _service_status_actions(self) -> list[ActionSpec]:
@@ -975,10 +976,11 @@ class ManagerTextualApp(App[None]):
     def _open_service_logs_screen(self) -> None:
         self.push_screen(
             FullscreenTextScreen(
-                "Service Logs",
+                self._t("service_logs_title"),
                 self.controller.service_logs_text(),
                 clear_before_close=True,
                 actions=translated_actions(self._service_logs_actions(), self._t),
+                close_label=self._t("close", "Close"),
             ),
             self._handle_service_logs_modal_result,
         )
@@ -986,10 +988,11 @@ class ManagerTextualApp(App[None]):
     def _open_service_status_screen(self) -> None:
         self.push_screen(
             FullscreenTextScreen(
-                "Service Status",
+                self._t("service_status_title"),
                 self.controller.service_status_text(),
                 actions=translated_actions(self._service_status_actions(), self._t),
                 action_handler=self._handle_service_status_viewer_action,
+                close_label=self._t("close", "Close"),
             )
         )
 
@@ -1025,7 +1028,7 @@ class ManagerTextualApp(App[None]):
         return items, index
 
     def _user_items(self) -> tuple[list[ValueListItem], int | None]:
-        entries, index = user_entries(self.users_snapshot, self.state.selected_user)
+        entries, index = user_entries(self.users_snapshot, self.state.selected_user, self._t)
         items = [ValueListItem(value, label) for value, label in entries]
         return items, index
 
@@ -1066,7 +1069,7 @@ class ManagerTextualApp(App[None]):
             "quit_app_hint",
             "Close application",
         )
-        self.query_one("#explorer-title", Static).update(f"👥 {self._t('users_secrets')}")
+        self.query_one("#explorer-title", Static).update(self._t("users_secrets"))
         self.query_one("#users-title", Static).update(self._t("users"))
         self.query_one("#secrets-title", Static).update(self._t("secrets"))
         self.query_one("#overview-content", Static).update(
@@ -1077,7 +1080,7 @@ class ManagerTextualApp(App[None]):
         self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
         activity_title = self.state.output_title if self.state.output_body.strip() else self._t("activity")
         activity_body = self.state.output_body or ""
-        self.query_one("#activity-title", Static).update(f"📝 {activity_title}")
+        self.query_one("#activity-title", Static).update(activity_title)
         self.query_one("#activity-content", Static).update(activity_body)
         show_user_lists = users_mode
         show_activity_panel = bool(activity_body.strip()) and not self._busy
@@ -1118,7 +1121,7 @@ class ManagerTextualApp(App[None]):
         self.run_worker(self.refresh_ui(), exclusive=True)
 
     def _clear_activity(self) -> None:
-        self._set_activity("Activity", "")
+        self._set_activity(self._t("activity"), "")
 
     def _notify_result(self, message: str, *, severity: str = "information") -> None:
         self.state.status_message = message
@@ -1134,7 +1137,7 @@ class ManagerTextualApp(App[None]):
         try:
             result = fn()
         except Exception as exc:
-            return ActionTaskResult(self._t("activity"), "", str(exc), "error")
+            return ActionTaskResult(self._t("activity"), "", self.controller.present_error(str(exc)), "error")
 
         if output_title is not None:
             if isinstance(result, (AppSettings, UserRecord, SecretRecord)):
@@ -1149,7 +1152,7 @@ class ManagerTextualApp(App[None]):
         elif isinstance(result, str):
             status_message = result
         else:
-            status_message = "Action completed."
+            status_message = self._t("action_completed")
         return ActionTaskResult(output_title or self._t("activity"), output_body, status_message)
 
     def _run_action(
@@ -1189,7 +1192,7 @@ class ManagerTextualApp(App[None]):
         if event.state == WorkerState.ERROR:
             self._busy_progress = 100
             self._update_busy_screen()
-            message = str(event.worker.error or "Action failed.")
+            message = self.controller.present_error(str(event.worker.error or self._t("action_failed")))
             self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self._notify_result(message, severity="error")
@@ -1274,7 +1277,11 @@ class ManagerTextualApp(App[None]):
             overflow = list(self._secondary_actions.values())
             if overflow:
                 self.push_screen(
-                    ActionMenuScreen(self._t("actions"), translated_actions(overflow, self._t)),
+                    ActionMenuScreen(
+                        self._t("actions"),
+                        translated_actions(overflow, self._t),
+                        close_label=self._t("close", "Close"),
+                    ),
                     self._handle_action_menu,
                 )
             return
@@ -1290,12 +1297,25 @@ class ManagerTextualApp(App[None]):
             )
             return
         if action == "edit_settings":
-            self.push_screen(SettingsScreen(self.controller.load_settings()), self._handle_settings_screen)
+            self.push_screen(
+                SettingsScreen(
+                    self.controller.load_settings(),
+                    title=self._t("edit_settings"),
+                    save_label=self._t("save", "Save"),
+                    cancel_label=self._t("cancel", "Cancel"),
+                    mt_port_label=self._t("proxy_port"),
+                    stats_port_label=self._t("api_port"),
+                    workers_label=self._t("workers"),
+                    fake_tls_domain_label=self._t("fake_tls_domain"),
+                    ad_tag_label=self._t("ad_tag"),
+                ),
+                self._handle_settings_screen,
+            )
             return
         if action == "show_export":
             self._run_action(
                 lambda: self.controller.export_text_for_user(self.state.selected_user),
-                output_title="Export",
+                output_title=self._t("export_title"),
             )
             return
         if action == "clear_activity":
@@ -1332,18 +1352,36 @@ class ManagerTextualApp(App[None]):
                     self._t("install_ref_title", "Install telemt ref"),
                     self._t("install_ref_prompt", "Tag or commit (blank = latest)"),
                     value=current_ref,
+                    save_label=self._t("save", "Save"),
+                    cancel_label=self._t("cancel", "Cancel"),
                 ),
                 self._handle_install_ref,
             )
             return
         if action == "add_user":
-            self.push_screen(TextInputScreen("Add User", "User name"), self._handle_add_user)
+            self.push_screen(
+                TextInputScreen(
+                    self._t("add_user"),
+                    self._t("add_user_prompt"),
+                    save_label=self._t("save", "Save"),
+                    cancel_label=self._t("cancel", "Cancel"),
+                ),
+                self._handle_add_user,
+            )
             return
         if action == "add_secret":
             if not self.state.selected_user:
-                self._notify_result("Select a user to continue.", severity="warning")
+                self._notify_result(self._t("select_user_to_continue"), severity="warning")
                 return
-            self.push_screen(TextInputScreen("Add Secret", "Note"), self._handle_add_secret)
+            self.push_screen(
+                TextInputScreen(
+                    self._t("add_secret"),
+                    self._t("add_secret_prompt"),
+                    save_label=self._t("save", "Save"),
+                    cancel_label=self._t("cancel", "Cancel"),
+                ),
+                self._handle_add_secret,
+            )
             return
         if action == "enable_user":
             self._run_action(lambda: self.controller.set_user_enabled(self.state.selected_user or "", True))
@@ -1356,13 +1394,14 @@ class ManagerTextualApp(App[None]):
             return
         if action == "delete_user":
             if not self.state.selected_user:
-                self._notify_result("Select a user to continue.", severity="warning")
+                self._notify_result(self._t("select_user_to_continue"), severity="warning")
                 return
             self.push_screen(
                 ConfirmScreen(
-                    "Delete User",
-                    f"Delete user {self.state.selected_user} and all secrets?",
-                    "Delete",
+                    self._t("delete_user_title"),
+                    self._t("delete_user_confirm", user=self.state.selected_user),
+                    self._t("delete", "Delete"),
+                    cancel_label=self._t("cancel", "Cancel"),
                     confirm_variant="error",
                 ),
                 self._handle_delete_user,
@@ -1379,13 +1418,14 @@ class ManagerTextualApp(App[None]):
             return
         if action == "delete_secret":
             if self.state.selected_secret_id is None:
-                self._notify_result("Select a secret to continue.", severity="warning")
+                self._notify_result(self._t("select_secret_to_continue"), severity="warning")
                 return
             self.push_screen(
                 ConfirmScreen(
-                    "Delete Secret",
-                    f"Delete secret #{self.state.selected_secret_id}?",
-                    "Delete",
+                    self._t("delete_secret_title"),
+                    self._t("delete_secret_confirm", secret_id=self.state.selected_secret_id),
+                    self._t("delete", "Delete"),
+                    cancel_label=self._t("cancel", "Cancel"),
                     confirm_variant="error",
                 ),
                 self._handle_delete_secret,
@@ -1394,7 +1434,7 @@ class ManagerTextualApp(App[None]):
         if action == "export_to_file":
             self._run_action(
                 lambda: self.controller.export_selected_user_to_file(self.state.selected_user),
-                output_title="Export File",
+                output_title=self._t("export_file_title"),
             )
             return
         if action == "service_start":
@@ -1407,13 +1447,13 @@ class ManagerTextualApp(App[None]):
             self._run_action(self.controller.service_restart)
             return
         if action == "service_status":
-            self.state.output_title = "Activity"
+            self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
             self._open_service_status_screen()
             return
         if action == "service_logs":
-            self.state.output_title = "Activity"
+            self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
             self._open_service_logs_screen()
@@ -1427,9 +1467,10 @@ class ManagerTextualApp(App[None]):
         if action == "factory_reset":
             self.push_screen(
                 ConfirmScreen(
-                    "Factory Reset",
-                    "Stop telemt, remove managed systemd units, configs, binaries, and runtime state?",
-                    "Factory Reset",
+                    self._t("factory_reset"),
+                    self._t("factory_reset_confirm"),
+                    self._t("factory_reset"),
+                    cancel_label=self._t("cancel", "Cancel"),
                     confirm_variant="error",
                 ),
                 self._handle_factory_reset,
@@ -1450,7 +1491,7 @@ class ManagerTextualApp(App[None]):
 
     def _open_configure_menu(self) -> None:
         self.push_screen(
-            ActionMenuScreen(self._t("configure"), translated_actions(self._configure_actions(), self._t)),
+            ActionMenuScreen(self._t("configure"), translated_actions(self._configure_actions(), self._t), close_label=self._t("close", "Close")),
             self._handle_action_menu,
         )
 
@@ -1463,6 +1504,7 @@ class ManagerTextualApp(App[None]):
             translated_actions(self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None), self._t),
             open_status=self._open_service_status_screen,
             open_logs=self._open_service_logs_screen,
+            close_label=self._t("close", "Close"),
         )
 
     def _handle_service_menu_result(self, action: str | None) -> None:
@@ -1473,7 +1515,7 @@ class ManagerTextualApp(App[None]):
 
     def _open_source_menu(self) -> None:
         self.push_screen(
-            ActionMenuScreen(self._t("source", "Binary"), translated_actions(self._source_actions(), self._t)),
+            ActionMenuScreen(self._t("source", "Binary"), translated_actions(self._source_actions(), self._t), close_label=self._t("close", "Close")),
             self._handle_source_menu_result,
         )
 
@@ -1488,7 +1530,10 @@ class ManagerTextualApp(App[None]):
             ActionSpec("lang_en", self._t("english", "English")),
             ActionSpec("lang_ru", self._t("russian", "Russian")),
         ]
-        self.push_screen(ActionMenuScreen(self._t("language"), actions, auto_focus_first=False), self._handle_language_menu)
+        self.push_screen(
+            ActionMenuScreen(self._t("language"), actions, auto_focus_first=False, close_label=self._t("close", "Close")),
+            self._handle_language_menu,
+        )
 
     def _handle_language_menu(self, action: str | None) -> None:
         self.state.current_screen = "dashboard"
@@ -1502,7 +1547,7 @@ class ManagerTextualApp(App[None]):
         try:
             self.controller.set_language(lang)
         except Exception as exc:
-            self._notify_result(str(exc), severity="error")
+            self._notify_result(self.controller.present_error(str(exc)), severity="error")
             self.run_worker(self.refresh_ui(), exclusive=True)
             return
         self.state.output_title = self._t("activity")
@@ -1512,13 +1557,13 @@ class ManagerTextualApp(App[None]):
 
     def _run_secret_action(self, action: Callable[[int], object]) -> None:
         if self.state.selected_secret_id is None:
-            self._notify_result("Select a secret to continue.", severity="warning")
+            self._notify_result(self._t("select_secret_to_continue"), severity="warning")
             return
         self._run_action(lambda: action(self.state.selected_secret_id))
 
     def _handle_add_user(self, result: str | None) -> None:
         if result:
-            self._run_action(lambda: self.controller.add_user(result), success_message=f"User {result} added.")
+            self._run_action(lambda: self.controller.add_user(result), success_message=self._t("user_added", user=result))
             return
         self.call_after_refresh(self._restore_default_focus)
 
@@ -1526,7 +1571,7 @@ class ManagerTextualApp(App[None]):
         if result is not None and self.state.selected_user:
             self._run_action(
                 lambda: self.controller.add_secret(self.state.selected_user or "", result),
-                success_message=f"Secret added for {self.state.selected_user}.",
+                success_message=self._t("secret_added", user=self.state.selected_user),
             )
             return
         self.call_after_refresh(self._restore_default_focus)
@@ -1535,7 +1580,7 @@ class ManagerTextualApp(App[None]):
         if result is None:
             self.call_after_refresh(self._restore_default_focus)
             return
-        busy_label = f"Installing {result.strip()}..." if result.strip() else "Installing latest telemt..."
+        busy_label = self._t("installing_ref", ref=result.strip()) if result.strip() else self._t("installing_latest")
         self._run_action(
             lambda: self.controller.install_telemt_ref(result),
             busy_label=busy_label,
@@ -1546,10 +1591,22 @@ class ManagerTextualApp(App[None]):
             self._open_configure_menu()
             return
         def apply_settings() -> str:
+            try:
+                mt_port = int(result["mt_port"])
+            except ValueError as exc:
+                raise AppError(self._t("invalid_integer_field", field=self._t("proxy_port"))) from exc
+            try:
+                stats_port = int(result["stats_port"])
+            except ValueError as exc:
+                raise AppError(self._t("invalid_integer_field", field=self._t("api_port"))) from exc
+            try:
+                workers = int(result["workers"])
+            except ValueError as exc:
+                raise AppError(self._t("invalid_integer_field", field=self._t("workers"))) from exc
             self.controller.update_settings(
-                mt_port=int(result["mt_port"]),
-                stats_port=int(result["stats_port"]),
-                workers=int(result["workers"]),
+                mt_port=mt_port,
+                stats_port=stats_port,
+                workers=workers,
                 fake_tls_domain=result["fake_tls_domain"],
                 ad_tag=result["ad_tag"],
             )
@@ -1585,8 +1642,9 @@ class ManagerTextualApp(App[None]):
         self.push_screen(
             ConfirmScreen(
                 self._t("quit_confirm_title", "Quit"),
-                self._t("quit_confirm_message", "Close mtp-manager? Unsaved terminal context in the UI will be lost."),
+                self._t("quit_confirm_message", "Close mtp-manager?"),
                 self._t("quit_confirm_button", "Quit"),
+                cancel_label=self._t("cancel", "Cancel"),
                 confirm_variant="warning",
                 center_message=True,
             ),

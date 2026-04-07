@@ -9,5 +9,5 @@ class UIState:
     status_message: str = ""
     selected_user: str | None = None
     selected_secret_id: int | None = None
-    output_title: str = "Activity"
+    output_title: str = ""
     output_body: str = ""

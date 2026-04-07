@@ -26,13 +26,13 @@ class DiagnosticsService:
 
     def build_report(self, settings: AppSettings) -> HealthReport:
         checks = [
-            HealthCheck("public_ip", "Public IP", self.network.detect_public_ip() or "unknown", Severity.INFO),
-            HealthCheck("telemt_version", "telemt", self.installed_version(), Severity.INFO),
-            HealthCheck("mt_port", "Proxy port", str(settings.mt_port), Severity.INFO),
-            HealthCheck("stats_port", "API port", str(settings.stats_port), Severity.INFO),
-            HealthCheck("fake_tls", "Fake TLS", settings.fake_tls_domain or "disabled", Severity.OK if settings.fake_tls_domain else Severity.WARN),
-            HealthCheck("enabled_secrets", "Enabled secrets", str(self.inventory.enabled_secret_count()), Severity.INFO),
-            HealthCheck("service_status", "Service status", self.systemd.state(), Severity.INFO),
+            HealthCheck("public_ip", "public_ip", self.network.detect_public_ip() or "unknown", Severity.INFO),
+            HealthCheck("telemt_version", "telemt_version", self.installed_version(), Severity.INFO),
+            HealthCheck("mt_port", "proxy_port", str(settings.mt_port), Severity.INFO),
+            HealthCheck("stats_port", "api_port", str(settings.stats_port), Severity.INFO),
+            HealthCheck("fake_tls", "fake_tls", settings.fake_tls_domain or "disabled", Severity.OK if settings.fake_tls_domain else Severity.WARN),
+            HealthCheck("enabled_secrets", "secrets_count", str(self.inventory.enabled_secret_count()), Severity.INFO),
+            HealthCheck("service_status", "service_status", self.systemd.state(), Severity.INFO),
         ]
         return HealthReport(checks=checks)
 
