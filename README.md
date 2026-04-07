@@ -39,9 +39,7 @@
 
 ## Overview
 
-`mtp-manager` is a lightweight TUI for installing, configuring, and operating a `telemt`-based MTProto proxy with Fake TLS support.
-
-It is designed for small VPS setups where a compact workflow matters more than a large control panel.
+`mtp-manager` is a lightweight TUI for installing, configuring, and operating a `telemt`-based MTProto proxy with Fake TLS support. It is designed for small VPS setups where a compact workflow matters more than a large control panel.
 
 ## Highlights
 
@@ -133,14 +131,14 @@ source setup.sh
 mtp-manager
 ```
 
-`setup.sh` prepares `.venv`, installs the project in editable mode, validates the entrypoint, and activates the environment in the current shell.
+`setup.sh` is meant to be sourced from `bash` or `zsh`. It prepares `.venv`, installs the project in editable mode, validates the entrypoint, and activates the environment in the current shell.
 
 ## Requirements
 
 - Python `3.11+`
 - Debian, Ubuntu, Fedora, or Arch Linux
 - `systemd`
-- root privileges for install and service operations
+- root privileges for install, service, firewall, and cleanup operations
 
 ## Project Layout
 
@@ -149,8 +147,11 @@ mtp-manager
 | `src/app.py` | CLI entrypoint and internal service commands |
 | `src/bootstrap.py` | Dependency wiring and startup migration glue |
 | `src/controller.py` | Application actions used by the TUI |
-| `src/services/` | install, runtime, diagnostics, cleanup, inventory |
+| `src/diagnostics/` | focused diagnostic checks for ports, Fake TLS, cloud, and service state |
 | `src/infra/` | shell, locale, storage, firewall, public IP, `systemd` |
+| `src/models/` | typed domain models |
+| `src/services/` | install, runtime, diagnostics, cleanup, inventory |
+| `src/ui/backend.py` | UI backend abstraction used by the app entrypoint |
 | `src/ui/textual_app.py` | main TUI orchestration |
 | `src/ui/modals.py` | modal screens and shared popup UI |
 | `src/ui/dashboard.py` | dashboard rendering and host metrics |
@@ -166,8 +167,8 @@ mtp-manager
 | `/var/lib/mtp-manager` | app data |
 | `/opt/telemt` | installed telemt binary |
 | `/etc/systemd/system/telemt.service` | main service unit |
-| `/etc/systemd/system/telemt-config-update.*` | config refresh service and timer |
-| `/etc/systemd/system/telemt-cleanup.*` | cleanup service and timer |
+| `/etc/systemd/system/telemt-config-refresh.*` | config refresh service and timer |
+| `/etc/systemd/system/mtp-manager-cleanup.*` | cleanup service and timer |
 
 ## Notes
 
