@@ -1608,7 +1608,7 @@ class ManagerTextualApp(App[None]):
 
     def _handle_install_ref(self, result: str | None) -> None:
         if result is None:
-            self.call_after_refresh(self._restore_default_focus)
+            self._open_source_menu()
             return
         busy_label = self._t("installing_ref", ref=result.strip()) if result.strip() else self._t("installing_latest")
         self._run_action(
