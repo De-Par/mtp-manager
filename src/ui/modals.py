@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from i18n.en import CATALOG as EN_CATALOG
+from i18n.ru import CATALOG as RU_CATALOG
+from i18n.zh import CATALOG as ZH_CATALOG
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -12,24 +15,37 @@ from textual.widgets import Button, Input, Static
 
 from models.settings import AppSettings
 
-WINDOW_TITLE_EMOJIS = {
+WINDOW_TITLE_EMOJI_KEYS = {
     "actions": "⚡",
     "configure": "🔩",
     "source": "📦",
-    "settings": "🔩",
-    "edit settings": "🔩",
-    "service": "🔧",
-    "service control": "🔧",
-    "service logs": "📜",
-    "quit": "🚪",
-    "выход": "🚪",
-    "add user": "👤",
-    "add secret": "🔐",
-    "delete user": "🗑️",
-    "delete secret": "🗑️",
-    "factory reset": "🚨",
+    "edit_settings": "🔩",
+    "language": "🌍",
+    "service_control": "🔧",
+    "service_logs_title": "📜",
+    "service_status_title": "📡",
+    "quit_confirm_title": "🚪",
+    "add_user": "👤",
+    "add_secret": "🔐",
+    "delete_user_title": "🗑️",
+    "delete_secret_title": "🗑️",
+    "factory_reset": "🚨",
+    "export_title": "📤",
     "export": "📤",
 }
+
+
+def _build_window_title_emojis() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for catalog in (EN_CATALOG, RU_CATALOG, ZH_CATALOG):
+        for key, emoji in WINDOW_TITLE_EMOJI_KEYS.items():
+            title = catalog.get(key)
+            if title:
+                mapping[title.casefold()] = emoji
+    return mapping
+
+
+WINDOW_TITLE_EMOJIS = _build_window_title_emojis()
 
 
 def format_window_title(title: str) -> str:
@@ -37,7 +53,7 @@ def format_window_title(title: str) -> str:
     title = title.strip()
     if not title:
         return title
-    if title[0] in "⚡⚙🛠📜👤🔐🗑🚨📤📈":
+    if title[0] in "⚡⚙🛠📜📡🌐👤🔐🗑🚨📤📈":
         return title
     emoji = WINDOW_TITLE_EMOJIS.get(title.casefold(), "✨")
     return f"{emoji} {title}"
