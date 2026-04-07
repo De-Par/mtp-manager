@@ -1531,7 +1531,13 @@ class ManagerTextualApp(App[None]):
             ActionSpec("lang_ru", self._t("russian", "Russian")),
         ]
         self.push_screen(
-            ActionMenuScreen(self._t("language"), actions, auto_focus_first=False, close_label=self._t("close", "Close")),
+            ActionMenuScreen(
+                self._t("language"),
+                actions,
+                auto_focus_first=False,
+                close_label=self._t("close", "Close"),
+                compact=True,
+            ),
             self._handle_language_menu,
         )
 

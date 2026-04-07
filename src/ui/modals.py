@@ -366,12 +366,22 @@ class MenuModalScreen(ModalScreen[str | None]):
         align: center top;
     }
 
+    ActionMenuScreen.-compact-menu .menu-actions,
+    ServiceMenuScreen.-compact-menu .menu-actions {
+        margin-top: 0;
+    }
+
     .menu-button {
         width: 28;
         margin-bottom: 1;
         background: white;
         color: #081c15;
         border: round #95d5b2;
+    }
+
+    ActionMenuScreen.-compact-menu .menu-button,
+    ServiceMenuScreen.-compact-menu .menu-button {
+        margin-bottom: 0;
     }
 
     Button.menu-button:hover {
@@ -510,12 +520,22 @@ class MenuModalScreen(ModalScreen[str | None]):
         ("escape", "dismiss_none", "Close"),
     ]
 
-    def __init__(self, title: str, actions: list[ActionSpec], auto_focus_first: bool = False, close_label: str = "close") -> None:
+    def __init__(
+        self,
+        title: str,
+        actions: list[ActionSpec],
+        auto_focus_first: bool = False,
+        close_label: str = "close",
+        *,
+        compact: bool = False,
+    ) -> None:
         super().__init__()
         self.title_text = title
         self.actions = actions
         self.auto_focus_first = auto_focus_first
         self.close_label = close_label
+        if compact:
+            self.add_class("-compact-menu")
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
