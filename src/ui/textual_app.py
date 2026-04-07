@@ -1505,6 +1505,9 @@ class ManagerTextualApp(App[None]):
             return
         if action == "lang_ru":
             self._change_language("ru")
+            return
+        if action == "lang_zh":
+            self._change_language("zh")
 
     def _handle_action_menu(self, action: str | None) -> None:
         if action is None:
@@ -1553,6 +1556,7 @@ class ManagerTextualApp(App[None]):
         actions = [
             ActionSpec("lang_en", self._t("english", "English")),
             ActionSpec("lang_ru", self._t("russian", "Russian")),
+            ActionSpec("lang_zh", self._t("chinese", "Chinese")),
         ]
         self.push_screen(
             ActionMenuScreen(

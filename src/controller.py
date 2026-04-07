@@ -98,7 +98,7 @@ class AppController:
             return self._t("port_out_of_range", field=self._t("api_port"), min=1, max=65535)
         if message == "workers must be >= 0":
             return self._t("workers_out_of_range")
-        if message == "ui_lang must be 'ru' or 'en'":
+        if message == "ui_lang must be 'ru', 'en', or 'zh'":
             return self._t("ui_lang_invalid")
         if message == "fake_tls_domain must be a valid domain name":
             return self._t("fake_tls_domain_invalid")

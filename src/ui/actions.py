@@ -46,6 +46,7 @@ ACTION_LABEL_KEYS = {
     "quit_app": "quit",
     "lang_en": "english",
     "lang_ru": "russian",
+    "lang_zh": "chinese",
 }
 
 PRIMARY_ACTION_LIMIT = 6

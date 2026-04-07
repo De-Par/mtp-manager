@@ -34,8 +34,8 @@ class AppSettings:
                 raise ValidationError(f"{field_name} must be in range {PORT_MIN}..{PORT_MAX}")
         if self.workers < 0:
             raise ValidationError("workers must be >= 0")
-        if self.ui_lang not in {"ru", "en"}:
-            raise ValidationError("ui_lang must be 'ru' or 'en'")
+        if self.ui_lang not in {"ru", "en", "zh"}:
+            raise ValidationError("ui_lang must be 'ru', 'en', or 'zh'")
         if self.fake_tls_domain and not DOMAIN_RE.fullmatch(self.fake_tls_domain):
             raise ValidationError("fake_tls_domain must be a valid domain name")
         if self.ad_tag and not AD_TAG_RE.fullmatch(self.ad_tag):

@@ -48,6 +48,11 @@ def _format_bytes(value: int) -> str:
     return f"{value} B"
 
 
+def _pad_to_cell_width(value: str, width: int) -> str:
+    """Pad text to a target display width, including wide CJK glyphs"""
+    return value + (" " * max(0, width - cell_len(value)))
+
+
 def _usage_percent_style(percent: float) -> str:
     if percent >= 90:
         return "bold #e03131"
@@ -171,7 +176,7 @@ def render_status_card(
             continue
         line = Text()
         line.append(" ")
-        line.append(label.ljust(label_width), style=BASE_TEXT_STYLE)
+        line.append(_pad_to_cell_width(label, label_width), style=BASE_TEXT_STYLE)
         line.append(" : ", style=BASE_TEXT_STYLE)
         if label == service_status_label and isinstance(value, str):
             value_renderable = _status_indicator(value, state=dashboard.service_status)
