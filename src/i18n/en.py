@@ -44,7 +44,6 @@ CATALOG = {
     "secrets_count_short": "Secrets",
     "back": "Back",
     "more": "More",
-    "refresh": "Refresh",
     "setup": "Setup",
     "edit_settings": "Edit Settings",
     "save": "Save",

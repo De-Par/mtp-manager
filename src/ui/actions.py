@@ -14,7 +14,6 @@ ACTION_LABEL_KEYS = {
     "configure_menu": "configure",
     "service_menu": "service_control",
     "source_menu": "source",
-    "refresh": "refresh",
     "setup": "setup",
     "edit_settings": "edit_settings",
     "show_export": "show_export",
@@ -119,7 +118,6 @@ def primary_screen_actions(current_screen: str, has_history: bool) -> list[Actio
     if current_screen == "dashboard":
         actions.extend(
             [
-                ActionSpec("refresh", "refresh"),
                 ActionSpec("configure_menu", "configure_menu"),
                 ActionSpec("service_menu", "service_menu"),
             ]

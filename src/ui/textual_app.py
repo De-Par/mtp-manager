@@ -11,6 +11,7 @@ from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, HorizontalScroll, Vertical, VerticalScroll
+from textual.screen import ModalScreen
 from textual.widget import MountError
 from textual.widgets import Button, DataTable, Label, ListView, Static
 from textual.worker import Worker, WorkerState
@@ -70,6 +71,7 @@ from ui.widgets import (
 
 
 class ManagerTextualApp(ModalFlowMixin, App[None]):
+    DASHBOARD_REFRESH_INTERVAL = 3.0
     TOP_SPLIT_HANDLE_WIDTH = SPLIT_HANDLE_WIDTH
     MIN_OVERVIEW_WIDTH = MIN_OVERVIEW_WIDTH
     TOP_ROW_CHROME_WIDTH = TOP_ROW_CHROME_WIDTH
@@ -109,6 +111,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         self._busy_progress = 0
         self._busy_frame_index = 0
         self._busy_timer: Any = None
+        self._dashboard_refresh_timer: Any = None
         self._top_split_ratio = 1 / 3
         self._hardware_snapshot: list[tuple[str, object]] = []
         self._dashboard_snapshot: DashboardViewModel | None = None
@@ -164,10 +167,16 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
     async def on_mount(self) -> None:
         self._capture_hardware_snapshot()
         await self.refresh_ui()
+        self.screen_change_signal.subscribe(self, self._sync_dashboard_refresh_timer)
+        self._sync_dashboard_refresh_timer(self.screen)
         self._sync_layout_mode(self.size.width)
         self._apply_top_split()
         self.call_after_refresh(self._sync_section_item_labels)
         self.set_focus(None)
+
+    def on_unmount(self) -> None:
+        self.screen_change_signal.unsubscribe(self)
+        self._stop_dashboard_refresh_timer()
 
     def on_resize(self, event: events.Resize) -> None:
         self._sync_layout_mode(event.size.width)
@@ -270,6 +279,48 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
 
     def _capture_hardware_snapshot(self) -> None:
         self._hardware_snapshot = capture_hardware_snapshot()
+
+    def _stop_dashboard_refresh_timer(self) -> None:
+        if self._dashboard_refresh_timer is None:
+            return
+        self._dashboard_refresh_timer.stop()
+        self._dashboard_refresh_timer = None
+
+    def _start_dashboard_refresh_timer(self) -> None:
+        if self._dashboard_refresh_timer is not None:
+            return
+        self._dashboard_refresh_timer = self.set_interval(
+            self.DASHBOARD_REFRESH_INTERVAL,
+            self._refresh_dashboard_panel,
+        )
+
+    def _dashboard_refresh_visible(self, active_screen: object | None = None) -> bool:
+        if not self.is_mounted or self.state.current_screen != "dashboard":
+            return False
+        visible_screen = self.screen if active_screen is None else active_screen
+        return not isinstance(visible_screen, ModalScreen)
+
+    def _sync_dashboard_refresh_timer(self, active_screen: object | None = None) -> None:
+        if self._dashboard_refresh_visible(active_screen):
+            self._start_dashboard_refresh_timer()
+            return
+        self._stop_dashboard_refresh_timer()
+
+    def _refresh_dashboard_panel(self) -> None:
+        if self._busy or not self._dashboard_refresh_visible():
+            return
+        if not self.query("#overview-content"):
+            return
+        try:
+            dashboard_snapshot = self.controller.dashboard()
+            self._capture_hardware_snapshot()
+            overview_content = self.query_one("#overview-content", Static)
+        except Exception:
+            return
+        self._dashboard_snapshot = dashboard_snapshot
+        overview_content.update(
+            render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
+        )
 
     def _update_topbar(self) -> None:
         header = Text()
@@ -734,6 +785,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             return
         focused = self.focused
         self.state.current_screen = normalize_screen(self.state.current_screen)
+        self._sync_dashboard_refresh_timer()
         self._refresh_selection()
         self._update_topbar()
         dashboard_mode = self.state.current_screen == "dashboard"
@@ -1010,8 +1062,6 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
                 self._open_language_menu()
                 return
             if screen == self.state.current_screen:
-                if screen == "dashboard":
-                    self._handle_ui_action("refresh")
                 return
             self._open_screen(screen)
             await self.refresh_ui(refresh_sections=False)
@@ -1120,8 +1170,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         if not button_id.startswith("action-"):
             return
         action = button_id.removeprefix("action-")
-        if action != "refresh":
-            self._restore_default_focus()
+        self._restore_default_focus()
         self._handle_ui_action(action)
 
     def _handle_ui_action(self, action: str) -> None:
@@ -1148,17 +1197,6 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
                     ),
                     self._handle_action_menu,
                 )
-            return
-        if action == "refresh":
-            self._capture_hardware_snapshot()
-            self.run_worker(
-                self.refresh_ui(
-                    refresh_sections=False,
-                    refresh_actions=False,
-                    preserve_focus=True,
-                ),
-                exclusive=True,
-            )
             return
         if action == "edit_settings":
             self.push_screen(

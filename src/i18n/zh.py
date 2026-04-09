@@ -44,7 +44,6 @@ CATALOG = {
     "secrets_count_short": "密钥数",
     "back": "返回",
     "more": "更多",
-    "refresh": "刷新",
     "setup": "安装",
     "edit_settings": "编辑设置",
     "save": "保存",
