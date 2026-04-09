@@ -163,11 +163,13 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         await self.refresh_ui()
         self._sync_layout_mode(self.size.width)
         self._apply_top_split()
+        self.call_after_refresh(self._sync_section_item_labels)
         self.set_focus(None)
 
     def on_resize(self, event: events.Resize) -> None:
         self._sync_layout_mode(event.size.width)
         self._apply_top_split()
+        self.call_after_refresh(self._sync_section_item_labels)
         if self.is_mounted and self.state.current_screen == "users":
             self._schedule_users_table_resize_refresh()
 
@@ -232,6 +234,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         offset = max(0, min(total_width, screen_x - left))
         self._top_split_ratio = offset / total_width
         self._apply_top_split()
+        self.call_after_refresh(self._sync_section_item_labels)
         if self.is_mounted and self.state.current_screen == "users":
             self._schedule_users_table_resize_refresh()
 
@@ -260,25 +263,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             root.remove_class("sections-icons")
         if not self.is_mounted:
             return
-        list_view = self.query_one("#sections-list", ListView)
-        values, index = section_values(self.state.current_screen)
-        items = [item for item in list_view.children if isinstance(item, ValueListItem)]
-        labels = [
-            self._screen_menu_label(
-                name,
-                icon_only=mode == "icon",
-                short=mode == "short",
-            )
-            for name in values
-        ]
-        if len(items) == len(values):
-            for item, label in zip(items, labels, strict=False):
-                item.label_text = label
-                item.query_one(Label).update(Text(label, no_wrap=True, overflow="ellipsis"))
-        self._list_snapshots["sections-list"] = (
-            tuple((value, label) for value, label in zip(values, labels, strict=False)),
-            index,
-        )
+        self.call_after_refresh(self._sync_section_item_labels)
 
     def _capture_hardware_snapshot(self) -> None:
         self._hardware_snapshot = capture_hardware_snapshot()
@@ -597,15 +582,49 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         items = [
             ValueListItem(
                 name,
-                self._screen_menu_label(
-                    name,
-                    icon_only=self._sections_label_mode == "icon",
-                    short=self._sections_label_mode == "short",
-                ),
+                self._base_section_label(name),
             )
             for name in values
         ]
         return items, index
+
+    def _base_section_label(self, screen: str) -> str:
+        return self._screen_menu_label(
+            screen,
+            icon_only=self._sections_label_mode == "icon",
+            short=self._sections_label_mode == "short",
+        )
+
+    def _section_item_label(self, screen: str, item: ValueListItem | None = None) -> str:
+        label = self._base_section_label(screen)
+        if self._sections_label_mode == "icon":
+            return label
+        if item is None:
+            return label
+        available_width = item.content_region.width or item.size.width
+        if available_width > 0 and cell_len(label) > available_width:
+            return self._screen_menu_label(screen, icon_only=True)
+        return label
+
+    def _sync_section_item_labels(self) -> None:
+        if not self.is_mounted or not self.query("#sections-list"):
+            return
+        list_view = self.query_one("#sections-list", ListView)
+        values, index = section_values(self.state.current_screen)
+        items = [item for item in list_view.children if isinstance(item, ValueListItem)]
+        if len(items) != len(values):
+            return
+        labels: list[str] = []
+        for item, name in zip(items, values, strict=False):
+            label = self._section_item_label(name, item)
+            labels.append(label)
+            if item.label_text != label:
+                item.label_text = label
+                item.query_one(Label).update(Text(label, no_wrap=True, overflow="ellipsis"))
+        self._list_snapshots["sections-list"] = (
+            tuple((value, label) for value, label in zip(values, labels, strict=False)),
+            index,
+        )
 
     def _user_items(self) -> tuple[list[ValueListItem], int | None]:
         entries, index = user_entries(self.users_snapshot, self.state.selected_user, self._t)
@@ -826,6 +845,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             if not await self._replace_list("sections-list", section_items, section_index):
                 self._queue_refresh_ui()
                 return
+            self.call_after_refresh(self._sync_section_item_labels)
         if refresh_user_lists:
             if users_screen:
                 if has_users:
