@@ -10,11 +10,12 @@ from rich.cells import cell_len
 from rich.text import Text
 
 from controller import DashboardViewModel
-from ui.theme import UI_ACCENT_INK, UI_INK, USAGE_CAUTION, USAGE_DANGER, USAGE_OK, USAGE_WARNING
+from ui.theme import BUTTON_DANGER_TEXT, UI_ACCENT_INK, UI_INK, USAGE_CAUTION, USAGE_DANGER, USAGE_OK, USAGE_WARNING
 
 StatusTranslateFn = Callable[[str], str]
 BASE_TEXT_STYLE = UI_INK
 TITLE_TEXT_STYLE = f"bold {UI_ACCENT_INK}"
+NONE_TEXT_STYLE = BUTTON_DANGER_TEXT
 
 
 def render_fields(body: str, *, align_fields: bool = False) -> Text:
@@ -164,7 +165,7 @@ def build_service_metrics(
         (translate("telemt_version"), dashboard.telemt_version),
         (translate("proxy_port"), str(dashboard.mt_port)),
         (translate("api_port"), str(dashboard.stats_port)),
-        (translate("fake_tls"), dashboard.fake_tls_domain or translate("disabled")),
+        (translate("fake_tls"), dashboard.fake_tls_domain or Text(translate("none"), style=NONE_TEXT_STYLE)),
         (translate("users_count"), str(dashboard.users_count)),
         (translate("secrets_count"), str(dashboard.secrets_count)),
     ]

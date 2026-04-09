@@ -18,7 +18,6 @@ from textual.widget import MountError
 from textual.widgets import Button, Input, ListView, Static
 
 from models.settings import AppSettings
-from ui.dashboard import render_fields
 from ui.theme import (
     ACCENT_LIGHT_BG,
     ACCENT_MID_BG,
@@ -1257,7 +1256,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
 
     #user-secrets-body {
         height: 1fr;
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     #user-secrets-list-column {
@@ -1328,7 +1327,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
     }
 
     #user-secrets-list {
-        padding: 0 1 0 0;
+        padding: 0 1;
     }
 
     #user-secrets-list .list-label {
@@ -1389,14 +1388,16 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         width: 1fr;
         color: $ui-ink;
         background: $app-surface;
-        padding: 0 1 0 0;
+        padding: 0 1;
+        content-align: center top;
+        text-align: center;
     }
 
     #user-secrets-detail-links {
         width: 1fr;
         height: auto;
         background: $app-surface;
-        padding: 0 1 0 0;
+        padding: 0 1;
         align: center top;
     }
 
@@ -1443,7 +1444,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
     }
 
     .user-secrets-link-copy.-disabled {
-        color: @@CONTENT_SUBTLE_TEXT@@;
+        color: @@BUTTON_DANGER_TEXT@@;
         text-style: none;
     }
 
@@ -1460,6 +1461,11 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         width: 1fr;
         height: auto;
         align: center middle;
+        min-height: 3;
+        background: transparent;
+        border: none;
+        padding: 1 0;
+        margin: 0;
     }
 
     #user-secrets-actions-left {
@@ -1522,6 +1528,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         enable_label: str = "Enable",
         disable_label: str = "Disable",
         close_label: str = "close",
+        none_text: str = "none",
         empty_list_message: str = "",
         empty_detail_message: str = "",
         empty_detail_no_secrets_message: str = "",
@@ -1543,6 +1550,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         self.enable_label = enable_label
         self.disable_label = disable_label
         self.close_label = close_label
+        self.none_text = none_text
         self.empty_list_message = empty_list_message
         self.empty_detail_message = empty_detail_message
         self.empty_detail_no_secrets_message = empty_detail_no_secrets_message
@@ -1697,8 +1705,10 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         detail_empty.display = False
         detail_scroll.display = True
         overview, credentials, links = self.detail_provider(self.selected_secret_id)
-        self.query_one("#user-secrets-detail-overview", Static).update(render_fields(overview, align_fields=True))
-        self.query_one("#user-secrets-detail-credentials", Static).update(render_fields(credentials, align_fields=True))
+        self.query_one("#user-secrets-detail-overview", Static).update(self._render_detail_fields(overview))
+        self.query_one("#user-secrets-detail-credentials", Static).update(
+            self._render_detail_fields(credentials, highlight_none_values=True)
+        )
         self._update_links(links)
         detail_scroll.scroll_home(animate=False, immediate=True, x_axis=False)
         self._update_action_buttons()
@@ -1712,28 +1722,44 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
             label.update("")
             tg_button.update(Text(""))
             tme_button.update(Text(""))
+            tg_button.display = False
+            tme_button.display = False
             tg_button.add_class("-disabled")
             tme_button.add_class("-disabled")
 
     def _update_links(self, links: list[tuple[str, str | None, str | None]]) -> None:
         self._link_targets.clear()
         label_width = max((cell_len(link_label) for link_label, _, _ in links), default=0) + 2
+        row_width = self._link_row_width(label_width, links)
+        link_rows = list(self.query(".user-secrets-link-row"))
         for index in range(3):
+            row = link_rows[index]
             label = self.query_one(f"#user-secrets-link-label-{index}", Static)
             tg_button = self.query_one(f"#user-secrets-link-copy-tg-{index}", InlineCopyAction)
             tme_button = self.query_one(f"#user-secrets-link-copy-tme-{index}", InlineCopyAction)
+            row.styles.width = row_width if row_width > 0 else "auto"
             label.styles.width = label_width if label_width > 0 else "auto"
             if index >= len(links):
                 label.update("")
                 tg_button.update(Text(""))
                 tme_button.update(Text(""))
+                tg_button.display = False
+                tme_button.display = False
                 tg_button.add_class("-disabled")
                 tme_button.add_class("-disabled")
                 continue
             link_label, tg_link, tme_link = links[index]
             label.update(f"{link_label} :")
-            tg_button.update(Text("[tg]"))
-            tme_button.update(Text("[t.me]"))
+            tg_button.display = True
+            tme_button.display = True
+            ee_disabled = link_label == "EE" and not tg_link and not tme_link
+            if ee_disabled:
+                tg_button.update(Text(self.none_text, style=BUTTON_DANGER_TEXT))
+                tme_button.update(Text(""))
+                tme_button.display = False
+            else:
+                tg_button.update(Text("[tg]"))
+                tme_button.update(Text("[t.me]"))
             if tg_link:
                 tg_button.remove_class("-disabled")
                 self._link_targets[tg_button.id or ""] = tg_link
@@ -1744,6 +1770,52 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
                 self._link_targets[tme_button.id or ""] = tme_link
             else:
                 tme_button.add_class("-disabled")
+
+    def _link_row_width(self, label_width: int, links: list[tuple[str, str | None, str | None]]) -> int:
+        row_width = 0
+        for link_label, tg_link, tme_link in links:
+            ee_none = link_label == "EE" and not tg_link and not tme_link
+            if ee_none:
+                content_width = 1 + cell_len(self.none_text)
+            else:
+                content_width = 1 + cell_len("[tg]") + 1 + cell_len("[t.me]")
+            row_width = max(row_width, label_width + content_width)
+        return row_width
+
+    def _render_detail_fields(self, body: str, *, highlight_none_values: bool = False) -> Text:
+        lines = body.splitlines()
+        label_width = max((cell_len(line.split(": ", 1)[0].rstrip()) for line in lines if ": " in line), default=0)
+        section_width = 0
+
+        for raw_line in lines:
+            line = raw_line.rstrip()
+            if not line or ": " not in line:
+                continue
+            _, value_text = line.split(": ", 1)
+            value_style = BUTTON_DANGER_TEXT if highlight_none_values and value_text == self.none_text else UI_INK
+            value_renderable = Text(value_text, style=value_style)
+            section_width = max(section_width, label_width + 3 + cell_len(value_renderable.plain))
+
+        text = Text()
+        for raw_line in lines:
+            line = raw_line.rstrip()
+            if not line:
+                text.append("\n")
+                continue
+            if ": " in line:
+                label_text, value_text = line.split(": ", 1)
+                value_style = BUTTON_DANGER_TEXT if highlight_none_values and value_text == self.none_text else UI_INK
+                value_renderable = Text(value_text, style=value_style)
+                text.append(label_text + (" " * max(0, label_width - cell_len(label_text))), style=UI_INK)
+                text.append(" : ", style=UI_INK)
+                text.append_text(value_renderable)
+                trailing_width = max(0, section_width - (label_width + 3 + cell_len(value_renderable.plain)))
+                if trailing_width:
+                    text.append(" " * trailing_width, style=UI_INK)
+            else:
+                text.append(line, style=UI_INK)
+            text.append("\n")
+        return text
 
     def _update_action_buttons(self) -> None:
         rotate_button = self.query_one("#user-secrets-action-rotate_secret", Button)

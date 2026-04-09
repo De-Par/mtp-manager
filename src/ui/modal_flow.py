@@ -273,15 +273,15 @@ class ModalFlowMixin:
             [
                 f"{self._t('user_name')}: {user.name}",
                 f"{self._t('secret_label', 'Secret')}: {secret_label}",
-                f"{self._t('created_at')}: {self._format_secret_created_at(secret.created_at)}",
                 f"{self._t('enabled_label', 'Enabled')}: {'🟢' if secret.enabled else '🔴'} {self._t('yes' if secret.enabled else 'no')}",
+                f"{self._t('created_at')}: {self._format_secret_created_at(secret.created_at)}",
             ]
         )
         credentials = "\n".join(
             [
                 f"{self._t('raw_secret')}: {secret.raw_secret}",
                 f"DD: {bundle.links.padded_secret}",
-                f"EE: {bundle.links.fake_tls_secret or self._t('disabled')}",
+                f"EE: {bundle.links.fake_tls_secret or self._t('none')}",
             ]
         )
         links = [
@@ -320,6 +320,7 @@ class ModalFlowMixin:
                 enable_label=self._t("enable", "Enable"),
                 disable_label=self._t("disable", "Disable"),
                 close_label=self._t("close", "Close"),
+                none_text=self._t("none", "none"),
                 empty_list_message=self._t("user_secrets_empty"),
                 empty_detail_message=self._t("secret_overview_unselected"),
                 empty_detail_no_secrets_message=self._t("secret_overview_empty"),

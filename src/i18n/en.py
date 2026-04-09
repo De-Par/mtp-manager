@@ -141,6 +141,7 @@ CATALOG = {
     "tme_ee": "t.me ee",
     "enabled": "enabled",
     "disabled": "disabled",
+    "none": "none",
     "yes": "yes",
     "no": "no",
     "on": "on",

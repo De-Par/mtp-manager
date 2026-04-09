@@ -141,6 +141,7 @@ CATALOG = {
     "tme_ee": "t.me ee",
     "enabled": "已启用",
     "disabled": "已禁用",
+    "none": "无",
     "yes": "是",
     "no": "否",
     "on": "开",
