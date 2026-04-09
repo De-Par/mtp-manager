@@ -103,14 +103,16 @@ class InventoryService:
     def set_user_enabled(self, user_name: str, enabled: bool) -> int:
         users = self.load_users()
         changed = 0
+        found = False
         updated: list[UserRecord] = []
         for user in users:
             if user.name == user_name:
+                found = True
                 updated.append(replace(user, enabled=enabled))
                 changed += len(user.secrets)
             else:
                 updated.append(user)
-        if changed == 0:
+        if not found:
             raise AppError(f"user not found: {user_name}")
         self.save_users(updated)
         return changed

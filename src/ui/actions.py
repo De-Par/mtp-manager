@@ -25,6 +25,8 @@ ACTION_LABEL_KEYS = {
     "install_ref": "install_ref",
     "reinstall_units": "reinstall_units",
     "add_user": "add_user",
+    "user_configure": "configure",
+    "user_secrets": "secrets",
     "add_secret": "add_secret",
     "enable_user": "enable_user",
     "disable_user": "disable_user",
@@ -54,6 +56,8 @@ PRIMARY_ACTION_LIMIT = 6
 
 def action_label(action: ActionSpec, translate: TranslatorFn) -> str:
     """Translate a single action label while preserving explicit fallbacks"""
+    if action.label != action.key:
+        return action.label
     key = ACTION_LABEL_KEYS.get(action.key)
     if key is None:
         return action.label
@@ -111,8 +115,6 @@ def service_actions(service_active: bool) -> list[ActionSpec]:
 def primary_screen_actions(current_screen: str, has_history: bool) -> list[ActionSpec]:
     """Top-level action bar actions for the currently selected workspace"""
     actions: list[ActionSpec] = []
-    if has_history and current_screen != "dashboard":
-        actions.append(ActionSpec("back", "back"))
     if current_screen == "dashboard":
         actions.extend(
             [
@@ -126,17 +128,8 @@ def primary_screen_actions(current_screen: str, has_history: bool) -> list[Actio
         actions.extend(
             [
                 ActionSpec("add_user", "add_user", "success"),
+                ActionSpec("user_configure", "user_configure"),
                 ActionSpec("delete_user", "delete_user", "error"),
-                ActionSpec("add_secret", "add_secret"),
-                ActionSpec("delete_secret", "delete_secret", "error"),
-                ActionSpec("show_export", "show_export"),
-                ActionSpec("enable_user", "enable_user"),
-                ActionSpec("disable_user", "disable_user"),
-                ActionSpec("rotate_user", "rotate_user"),
-                ActionSpec("enable_secret", "enable_secret"),
-                ActionSpec("disable_secret", "disable_secret"),
-                ActionSpec("rotate_secret", "rotate_secret"),
-                ActionSpec("export_to_file", "export_to_file"),
             ]
         )
         return actions

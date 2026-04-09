@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-
 from models.secret import SecretRecord, UserRecord
 
 LabelTranslateFn = Callable[[str, str | None], str]
@@ -16,6 +15,12 @@ SCREEN_LABEL_KEYS = {
     "language": "language",
 }
 
+SCREEN_SHORT_LABEL_KEYS = {
+    "dashboard": "dashboard",
+    "users": "users",
+    "language": "language",
+}
+
 SCREEN_EMOJIS = {
     "dashboard": "📊",
     "users": "👥",
@@ -25,7 +30,11 @@ SCREEN_EMOJIS = {
 
 def normalize_screen(screen: str) -> str:
     """Map legacy screen aliases back to the current top-level workspace ids"""
-    return "dashboard" if screen in {"setup", "service", "maintenance", "reports"} else screen
+    if screen in {"setup", "service", "maintenance", "reports"}:
+        return "dashboard"
+    if screen == "secrets":
+        return "users"
+    return screen
 
 
 def screen_label(screen: str, translate: LabelTranslateFn) -> str:
@@ -33,9 +42,23 @@ def screen_label(screen: str, translate: LabelTranslateFn) -> str:
     return translate(SCREEN_LABEL_KEYS.get(screen, screen), screen)
 
 
-def screen_menu_label(screen: str, translate: LabelTranslateFn) -> str:
+def screen_short_label(screen: str, translate: LabelTranslateFn) -> str:
+    """Translate a shortened workspace label for narrower sections panels."""
+    return translate(SCREEN_SHORT_LABEL_KEYS.get(screen, screen), screen)
+
+
+def screen_icon(screen: str) -> str:
+    """Return the icon shown for a top-level workspace."""
+    return SCREEN_EMOJIS.get(screen, "•")
+
+
+def screen_menu_label(screen: str, translate: LabelTranslateFn, *, icon_only: bool = False, short: bool = False) -> str:
     """Build the visible sections-list label including its emoji"""
-    return f"{SCREEN_EMOJIS.get(screen, '•')} {screen_label(screen, translate)}"
+    emoji = screen_icon(screen)
+    if icon_only:
+        return emoji
+    label = screen_short_label(screen, translate) if short else screen_label(screen, translate)
+    return f"{emoji} {label}"
 
 
 def refresh_selection(
@@ -88,17 +111,24 @@ def user_entries(
     translate: LabelTranslateFn,
 ) -> tuple[list[tuple[str, str]], int | None]:
     """Return visible rows and selected index for the users list"""
-    items = [(user.name, f"{user.name} [{translate('on' if user.enabled else 'off', 'on' if user.enabled else 'off')}]") for user in users_snapshot]
+    items = [(user.name, user.name) for user in users_snapshot]
     names = [user.name for user in users_snapshot]
     index = names.index(selected_user) if selected_user in names else None
     return items, index
+
+
+def secret_list_items(owner: UserRecord | None) -> list[tuple[int, str]]:
+    """Return visible secret rows using stable ids and UI-local ordinal labels."""
+    if owner is None:
+        return []
+    return [(secret.id, f"#{index} {secret.note or '-'}") for index, secret in enumerate(owner.secrets, start=1)]
 
 
 def secret_entries(owner: UserRecord | None, selected_secret_id: int | None) -> tuple[list[tuple[int, str]], int | None]:
     """Return visible rows and selected index for the secrets list"""
     if owner is None:
         return [], None
-    items = [(secret.id, f"#{secret.id} {secret.note or '-'}") for secret in owner.secrets]
+    items = secret_list_items(owner)
     ids = [secret.id for secret in owner.secrets]
     index = ids.index(selected_secret_id) if selected_secret_id in ids else None
     return items, index

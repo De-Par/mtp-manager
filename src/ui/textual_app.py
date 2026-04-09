@@ -1,42 +1,37 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 import shutil
 import subprocess
 import sys
 from typing import Any
 
 from rich.cells import cell_len
-from rich.table import Table
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.widget import MountError
-from textual.widgets import Button, Label, ListItem, ListView, Static
+from textual.widgets import Button, DataTable, Label, ListView, Static
 from textual.worker import Worker, WorkerState
 
 from controller import AppController, DashboardViewModel
-from errors import AppError
 from models.secret import SecretRecord, UserRecord
 from ui.actions import (
     action_label,
-    configure_actions,
     primary_screen_actions,
-    service_actions,
-    source_actions,
     split_actions,
-    translated_actions,
 )
+from ui.app_styles import APP_CSS
 from ui.backend import UIBackend
 from ui.dashboard import capture_hardware_snapshot, render_fields, render_status_card
+import ui.feedback as ui_feedback
 from ui.lists import (
     SCREEN_ORDER,
     normalize_screen,
     refresh_selection,
     screen_menu_label,
+    secret_list_items,
     section_values,
     secret_entries,
     selected_secret_record,
@@ -44,593 +39,47 @@ from ui.lists import (
     user_entries,
 )
 from ui.modals import (
-    ActionMenuScreen,
     ActionSpec,
+    ActionMenuScreen,
     ConfirmScreen,
-    FullscreenTextScreen,
-    ServiceMenuScreen,
     SettingsScreen,
     TextInputScreen,
+    UserConfigureMenuScreen,
+    UserSecretsScreen,
 )
+from ui.modal_flow import ModalFlowMixin
 from ui.state import UIState
-
-BUSY_FRAMES = ("⏳", "⌛")
-if sys.platform == "darwin":
-    COPY_SELECTION_BINDINGS = [
-        Binding("ctrl+c", "copy_selection", "Copy", show=False, priority=True),
-        Binding("super+c", "copy_selection", "Copy", show=False, priority=True),
-    ]
-else:
-    COPY_SELECTION_BINDINGS = [
-        Binding("ctrl+c", "copy_selection", "Copy", show=False, priority=True),
-    ]
-
-
-@dataclass(slots=True)
-class ActionTaskResult:
-    output_title: str
-    output_body: str
-    status_message: str
-    severity: str = "information"
-
-
-class ValueListItem(ListItem):
-    def __init__(self, value: str | int, label: str) -> None:
-        self.value = value
-        self.label_text = label
-        super().__init__(Label(label, classes="list-label"))
-
-
-class SplitHandle(Static):
-    can_focus = True
-
-    def __init__(self) -> None:
-        super().__init__("│", id="top-split-handle")
-        self._dragging = False
-
-    async def _on_mouse_down(self, event: events.MouseDown) -> None:
-        self._dragging = True
-        self.focus()
-        self.capture_mouse()
-        event.stop()
-        if hasattr(self.app, "set_top_split_from_screen_x"):
-            self.app.set_top_split_from_screen_x(int(event.screen_x))
-
-    async def _on_mouse_move(self, event: events.MouseMove) -> None:
-        if self._dragging and hasattr(self.app, "set_top_split_from_screen_x"):
-            self.app.set_top_split_from_screen_x(int(event.screen_x))
-            event.stop()
-
-    async def _on_mouse_up(self, event: events.MouseUp) -> None:
-        if self._dragging:
-            self._dragging = False
-            self.release_mouse()
-            event.stop()
-
-
-class TopbarClose(Container):
-    can_focus = True
-
-    def __init__(self) -> None:
-        super().__init__(id="topbar-close")
-
-    def compose(self) -> ComposeResult:
-        yield Static("×", id="topbar-close-glyph")
-
-    async def _on_mouse_down(self, event: events.MouseDown) -> None:
-        self.focus()
-        event.stop()
-
-    async def _on_click(self, event: events.Click) -> None:
-        event.stop()
-        if hasattr(self.app, "_open_quit_confirmation"):
-            self.app._open_quit_confirmation()
-
-    async def _on_key(self, event: events.Key) -> None:
-        if event.key in {"enter", "space"}:
-            event.stop()
-            if hasattr(self.app, "_open_quit_confirmation"):
-                self.app._open_quit_confirmation()
-
-
-class ManagerTextualApp(App[None]):
-    TOP_SPLIT_HANDLE_WIDTH = 3
-    MIN_OVERVIEW_WIDTH = 28
-    TOP_ROW_CHROME_WIDTH = 6
-
-    CSS = """
-    $app-surface: #ffffff;
-    $ui-ink: #1f2937;
-    $ui-accent-ink: #275a45;
-    $ui-border: #d9e7df;
-    $ui-border-active: #96b9a7;
-
-    Screen {
-        background: $app-surface;
-        color: $ui-ink;
-    }
-
-    #topbar {
-        dock: top;
-        height: 3;
-        layout: horizontal;
-        align: center middle;
-        background: #1b4332;
-        color: #ffffff;
-        padding: 0 0 0 3;
-        text-style: bold;
-    }
-
-    #topbar-title {
-        width: 1fr;
-        height: 1fr;
-        content-align: center middle;
-        color: #ffffff;
-        text-style: bold;
-    }
-
-    #topbar-close {
-        dock: right;
-        width: 5;
-        min-width: 5;
-        height: 3;
-        align: center middle;
-        background: #1b4332;
-        color: #ffffff;
-        border: none;
-        padding: 0;
-        margin: 0;
-        text-style: bold;
-    }
-
-    #topbar-close-glyph {
-        width: 1fr;
-        height: 1fr;
-        content-align: center middle;
-        text-align: center;
-        color: #ffffff;
-        background: transparent;
-        text-style: bold;
-    }
-
-    #topbar-close:hover {
-        background: #24533d;
-        color: white;
-        border: none;
-    }
-
-    #topbar-close:focus {
-        background: #24533d;
-        color: white;
-        border: none;
-    }
-
-    #root {
-        layout: vertical;
-        height: 1fr;
-        padding: 1;
-        background: $app-surface;
-    }
-
-    .row {
-        layout: horizontal;
-        height: 1fr;
-    }
-
-    #row-primary {
-        min-height: 10;
-    }
-
-    #row-secondary {
-        min-height: 8;
-    }
-
-    #root.compact .row {
-        layout: vertical;
-        height: auto;
-    }
-
-    #sections-panel {
-        width: 1fr;
-        min-width: 20;
-        background: $app-surface;
-    }
-
-    #overview-panel,
-    #activity-panel,
-    #explorer-panel,
-    #actions-panel {
-        width: 1fr;
-        background: $app-surface;
-    }
-
-    #top-split-handle {
-        width: 1;
-        min-width: 1;
-        height: 1fr;
-        content-align: center middle;
-        color: #7aa38d;
-        background: transparent;
-        text-style: bold;
-        margin: 0;
-    }
-
-    #top-split-handle:hover {
-        color: #5f8774;
-        background: #f6fbf8;
-    }
-
-    #top-split-handle:focus {
-        color: #4f7464;
-        background: #eef6f1;
-    }
-
-    .panel {
-        background: $app-surface;
-        border: round $ui-border;
-        padding: 1;
-        margin-bottom: 1;
-    }
-
-    .panel-title {
-        width: 1fr;
-        content-align: center middle;
-        color: $ui-accent-ink;
-        text-style: bold;
-        margin: 0 0 1 0;
-    }
-
-    .content-scroll {
-        height: 1fr;
-        background: $app-surface;
-    }
-
-    .content-text {
-        color: $ui-ink;
-        padding: 0 0 1 0;
-        background: $app-surface;
-    }
-
-    .content-scroll,
-    ListView,
-    HorizontalScroll {
-        scrollbar-color: #8fd3ac;
-        scrollbar-color-hover: #74c69d;
-        scrollbar-color-active: #2d6a4f;
-        scrollbar-background: #f8fcf9;
-        scrollbar-background-hover: #f1f8f3;
-        scrollbar-background-active: #e7f4ea;
-        scrollbar-size-vertical: 1;
-        scrollbar-size-horizontal: 1;
-    }
-
-    .field-label {
-        text-style: bold;
-        color: #44556a;
-    }
-
-    ListView {
-        background: transparent;
-        color: $ui-ink;
-        border: none;
-        height: 1fr;
-    }
-
-    ListItem {
-        background: white;
-        color: $ui-ink;
-        padding: 0 1;
-        margin-bottom: 1;
-    }
-
-    ListItem.-highlight {
-        background: #d8f3dc;
-        color: $ui-ink;
-        text-style: bold;
-    }
-
-    ListView:focus > ListItem.-highlight {
-        background: #74c69d;
-        color: white;
-    }
-
-    .list-label {
-        width: 1fr;
-    }
-
-    #sections-list {
-        padding: 0 1;
-        background: $app-surface;
-    }
-
-    #overview-scroll,
-    #activity-scroll,
-    #explorer-lists,
-    #users-subpanel,
-    #secrets-subpanel,
-    #users-list,
-    #secrets-list {
-        background: $app-surface;
-    }
-
-    #sections-list .list-label {
-        content-align: center middle;
-        text-align: center;
-        text-style: bold;
-    }
-
-    #sections-list > ListItem {
-        background: $app-surface;
-        border: round $ui-border;
-        color: $ui-ink;
-        padding: 0 2;
-        margin-bottom: 0;
-        min-height: 3;
-    }
-
-    #sections-list > ListItem:hover {
-        background: #f3fbf5;
-        border: round $ui-border-active;
-        color: $ui-ink;
-    }
-
-    #sections-list > ListItem.-highlight {
-        background: $app-surface;
-        border: round $ui-border;
-        color: $ui-ink;
-    }
-
-    #sections-list:focus > ListItem.-highlight {
-        background: $app-surface;
-        border: round $ui-border;
-        color: $ui-ink;
-    }
-
-    #sections-list > ListItem.-highlight:hover,
-    #sections-list:focus > ListItem.-highlight:hover {
-        background: #f3fbf5;
-        border: round $ui-border-active;
-        color: $ui-ink;
-    }
-
-    #explorer-lists {
-        height: 1fr;
-    }
-
-    #users-subpanel,
-    #secrets-subpanel {
-        width: 1fr;
-        height: 1fr;
-    }
-
-    .subpanel-title {
-        width: 1fr;
-        content-align: center middle;
-        color: $ui-accent-ink;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-
-    #activity-panel {
-        display: none;
-    }
-
-    #actions-panel {
-        height: auto;
-        min-height: 3;
-        background: transparent;
-        border: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    #busy-overlay {
-        layer: overlay;
-        width: 1fr;
-        height: 1fr;
-        display: none;
-        align: center middle;
-        background: transparent;
-    }
-
-    #busy-dialog {
-        width: 32;
-        height: auto;
-        background: #364152;
-        color: #d1d5db;
-        border: none;
-        padding: 1 3;
-        offset: 0 -1;
-    }
-
-    #busy-label {
-        width: 1fr;
-        color: #d1d5db;
-        text-style: none;
-        content-align: center middle;
-        margin-bottom: 1;
-    }
-
-    #busy-progress {
-        width: 1fr;
-        color: #d1d5db;
-        content-align: center middle;
-    }
-
-    #actions-scroll {
-        height: auto;
-        margin: 0;
-    }
-
-    #actions-container {
-        width: 1fr;
-        height: auto;
-        align: center middle;
-        padding: 0;
-    }
-
-    ToastRack {
-        margin-bottom: 1;
-    }
-
-    Toast {
-        width: 76;
-        max-width: 72%;
-        padding: 1 2;
-        background: #364152;
-        color: #d1d5db;
-    }
-
-    Toast.-information {
-        border-left: outer #37b24d;
-    }
-
-    Toast.-warning {
-        border-left: outer #e9c46a;
-    }
-
-    Toast.-error {
-        border-left: outer #e03131;
-    }
-
-    .action-button {
-        width: auto;
-        min-width: 11;
-        margin-right: 1;
-    }
-
-    Button {
-        min-width: 9;
-        height: 3;
-        padding: 0 2;
-        content-align: center middle;
-        text-style: bold;
-    }
-
-    Button.-style-default {
-        background: white;
-        color: $ui-ink;
-        border: round $ui-border-active;
-        text-style: bold;
-    }
-
-    Button.-style-default:hover {
-        background: #f4fbf6;
-    }
-
-    Button.-style-default:focus {
-        background: white;
-        color: $ui-ink;
-        border: round #6f9d86;
-    }
-
-    Button.-style-default:hover:focus {
-        background: #f4fbf6;
-        color: $ui-ink;
-        border: round #6f9d86;
-    }
-
-    Button.-success {
-        background: white;
-        color: $ui-ink;
-        border: round $ui-border-active;
-        text-style: bold;
-    }
-
-    Button.-success:hover {
-        background: #eefaf2;
-        color: $ui-ink;
-        border: round #6f9d86;
-    }
-
-    Button.-success:focus {
-        background: #f4fbf6;
-        color: $ui-ink;
-        border: round #6f9d86;
-    }
-
-    Button.-success:hover:focus {
-        background: #eefaf2;
-        color: $ui-ink;
-        border: round #6f9d86;
-    }
-
-    Button.-error {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #f1aeb5;
-        text-style: bold;
-    }
-
-    Button.-error:hover {
-        background: #fff1f2;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    Button.-error:focus {
-        background: #e03131;
-        color: white;
-        border: round #c92a2a;
-    }
-
-    Button.-error:hover:focus {
-        background: #fff1f2;
-        color: #a61e4d;
-        border: round #e88997;
-    }
-
-    Button.-warning {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e9c46a;
-        text-style: bold;
-    }
-
-    Button.-warning:hover {
-        background: #fff4c2;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    Button.-warning:focus {
-        background: #e9c46a;
-        color: #523d00;
-        border: round #c99a1d;
-    }
-
-    Button.-warning:hover:focus {
-        background: #fff4c2;
-        color: #7c5c00;
-        border: round #e0b84d;
-    }
-
-    Button.-flat {
-        background: white;
-        color: #1b4332;
-        border: round #d7ebe0;
-        text-style: bold;
-    }
-
-    Button.-flat:hover {
-        background: #f4fbf6;
-    }
-
-    Button.-flat:focus {
-        background: white;
-        color: #081c15;
-        border: round #74c69d;
-    }
-
-    #explorer-panel {
-        display: none;
-    }
-    """
+from ui.theme import (
+    APP_HEADER_FG,
+    MIN_OVERVIEW_WIDTH,
+    SECTION_MIN_ICON_WIDTH,
+    SECTION_MIN_TEXT_WIDTH,
+    SPLIT_HANDLE_WIDTH,
+    TOP_ROW_CHROME_WIDTH,
+    UI_ACCENT_INK,
+)
+from ui.widgets import (
+    COPY_SELECTION_BINDINGS,
+    SplitHandle,
+    TopbarClose,
+    UsersTable,
+    ValueListItem,
+)
+
+
+class ManagerTextualApp(ModalFlowMixin, App[None]):
+    TOP_SPLIT_HANDLE_WIDTH = SPLIT_HANDLE_WIDTH
+    MIN_OVERVIEW_WIDTH = MIN_OVERVIEW_WIDTH
+    TOP_ROW_CHROME_WIDTH = TOP_ROW_CHROME_WIDTH
+    MIN_SECTION_TEXT_WIDTH = SECTION_MIN_TEXT_WIDTH
+    MIN_SECTION_ICON_WIDTH = SECTION_MIN_ICON_WIDTH
+
+    CSS = APP_CSS
 
     BINDINGS = [
         *COPY_SELECTION_BINDINGS,
         ("q", "quit_app", "Quit"),
-        ("escape", "go_back", "Back"),
+        ("escape", "quit_app", "Quit"),
         ("backspace", "go_back", "Back"),
         ("left", "prev_screen", "Prev"),
         ("right", "next_screen", "Next"),
@@ -662,37 +111,45 @@ class ManagerTextualApp(App[None]):
         self._hardware_snapshot: list[tuple[str, object]] = []
         self._dashboard_snapshot: DashboardViewModel | None = None
         self._refresh_ui_scheduled = False
-        self._reopen_screen_after_action: str | None = None
+        self._reopen_screen_after_action: object | None = None
         self._list_snapshots: dict[str, tuple[tuple[tuple[str | int, str], ...], int | None]] = {}
+        self._users_sort_column = "name"
+        self._users_sort_reverse = False
+        self._users_row_selected = False
+        self._users_table_layout_signature: tuple[int, int] | None = None
+        self._users_table_resize_timer: Any = None
+        self._sections_label_mode = "full"
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
             yield Static("", id="topbar-title")
             yield TopbarClose()
         with Vertical(id="root"):
-            with Horizontal(id="row-primary", classes="row"):
+            with Horizontal(id="workspace-row"):
                 with Vertical(classes="panel", id="sections-panel"):
                     yield Static("", classes="panel-title", id="sections-title")
                     yield ListView(id="sections-list")
                 yield SplitHandle()
-                with Vertical(classes="panel", id="overview-panel"):
-                    yield Static("", classes="panel-title", id="overview-title")
-                    with VerticalScroll(classes="content-scroll", id="overview-scroll"):
-                        yield Static("", id="overview-content", classes="content-text")
-            with Horizontal(id="row-secondary", classes="row"):
-                with Vertical(classes="panel", id="explorer-panel"):
-                    yield Static("", classes="panel-title", id="explorer-title")
-                    with Horizontal(id="explorer-lists"):
-                        with Vertical(id="users-subpanel"):
-                            yield Static("", classes="subpanel-title", id="users-title")
-                            yield ListView(id="users-list")
-                        with Vertical(id="secrets-subpanel"):
-                            yield Static("", classes="subpanel-title", id="secrets-title")
-                            yield ListView(id="secrets-list")
-                with Vertical(classes="panel", id="activity-panel"):
-                    yield Static("", classes="panel-title", id="activity-title")
-                    with VerticalScroll(classes="content-scroll", id="activity-scroll"):
-                        yield Static("", id="activity-content", classes="content-text")
+                with Vertical(id="content-column"):
+                    with Vertical(classes="panel", id="explorer-panel"):
+                        yield Static("", classes="panel-title", id="explorer-title")
+                        with Horizontal(id="explorer-lists"):
+                            with Vertical(id="users-subpanel"):
+                                yield Static("", classes="subpanel-title", id="users-title")
+                                yield UsersTable(id="users-table", cursor_type="row", zebra_stripes=True, show_row_labels=False, cell_padding=4)
+                                yield ListView(id="users-list")
+                                yield Static("", id="users-empty-state")
+                            with Vertical(id="secrets-subpanel"):
+                                yield Static("", classes="subpanel-title", id="secrets-title")
+                                yield ListView(id="secrets-list")
+                    with Vertical(classes="panel", id="overview-panel"):
+                        yield Static("", classes="panel-title", id="overview-title")
+                        with VerticalScroll(classes="content-scroll", id="overview-scroll"):
+                            yield Static("", id="overview-content", classes="content-text")
+                    with Vertical(classes="panel", id="activity-panel"):
+                        yield Static("", classes="panel-title", id="activity-title")
+                        with VerticalScroll(classes="content-scroll", id="activity-scroll"):
+                            yield Static("", id="activity-content", classes="content-text")
             with Vertical(id="actions-panel"):
                 with HorizontalScroll(id="actions-scroll"):
                     yield Horizontal(id="actions-container")
@@ -711,21 +168,26 @@ class ManagerTextualApp(App[None]):
     def on_resize(self, event: events.Resize) -> None:
         self._sync_layout_mode(event.size.width)
         self._apply_top_split()
+        if self.is_mounted and self.state.current_screen == "users":
+            self._schedule_users_table_resize_refresh()
 
     def _sync_layout_mode(self, width: int) -> None:
         root = self.query_one("#root", Vertical)
-        if width < self._top_row_min_width():
+        if width < self._top_row_min_width(icon_only=True):
             root.add_class("compact")
+            root.remove_class("sections-icons")
         else:
             root.remove_class("compact")
 
-    def _section_min_width(self) -> int:
-        labels = [self._screen_menu_label(screen) for screen in SCREEN_ORDER]
-        return max(22, max(cell_len(label) for label in labels) + 6)
+    def _section_min_width(self, *, icon_only: bool = False, short: bool = False) -> int:
+        labels = [self._screen_menu_label(screen, icon_only=icon_only, short=short) for screen in SCREEN_ORDER]
+        minimum = self.MIN_SECTION_ICON_WIDTH if icon_only else self.MIN_SECTION_TEXT_WIDTH
+        chrome = 4 if icon_only else 6
+        return max(minimum, max(cell_len(label) for label in labels) + chrome)
 
-    def _top_row_min_width(self) -> int:
+    def _top_row_min_width(self, *, icon_only: bool = False) -> int:
         return (
-            self._section_min_width()
+            self._section_min_width(icon_only=icon_only)
             + self.MIN_OVERVIEW_WIDTH
             + self.TOP_SPLIT_HANDLE_WIDTH
             + self.TOP_ROW_CHROME_WIDTH
@@ -735,57 +197,126 @@ class ManagerTextualApp(App[None]):
         root = self.query_one("#root", Vertical)
         compact = root.has_class("compact")
         handle = self.query_one("#top-split-handle", SplitHandle)
+        section_panel = self.query_one("#sections-panel", Vertical)
         if compact:
-            self.query_one("#sections-panel", Vertical).styles.width = "1fr"
+            section_panel.styles.width = "1fr"
             handle.display = False
+            if self._sections_label_mode != "full":
+                self._set_sections_label_mode("full")
             return
-        row = self.query_one("#row-primary", Horizontal)
-        total_width = max(40, row.size.width)
+        row = self.query_one("#workspace-row", Horizontal)
+        measured_width = row.size.width or row.content_region.width or max(0, self.size.width - self.TOP_ROW_CHROME_WIDTH)
+        total_width = max(40, measured_width)
         handle.display = True
         handle_width = self.TOP_SPLIT_HANDLE_WIDTH
-        min_section = self._section_min_width()
+        text_min_section = self._section_min_width(icon_only=False, short=False)
+        short_min_section = self._section_min_width(icon_only=False, short=True)
+        icon_min_section = self._section_min_width(icon_only=True)
         min_overview = self.MIN_OVERVIEW_WIDTH
         target = int(total_width * self._top_split_ratio)
+        mode = "icon" if target < short_min_section else "short" if target < text_min_section else "full"
+        if mode != self._sections_label_mode:
+            self._set_sections_label_mode(mode)
+        min_section = icon_min_section if mode == "icon" else short_min_section if mode == "short" else text_min_section
         max_section = max(min_section, total_width - min_overview - handle_width)
         section_width = max(min_section, min(target, max_section))
-        self.query_one("#sections-panel", Vertical).styles.width = section_width
+        section_panel.styles.width = section_width
 
     def set_top_split_from_screen_x(self, screen_x: int) -> None:
         root = self.query_one("#root", Vertical)
         if root.has_class("compact"):
             return
-        row = self.query_one("#row-primary", Horizontal)
+        row = self.query_one("#workspace-row", Horizontal)
         total_width = max(40, row.size.width)
         left = row.region.x
         offset = max(0, min(total_width, screen_x - left))
         self._top_split_ratio = offset / total_width
         self._apply_top_split()
+        if self.is_mounted and self.state.current_screen == "users":
+            self._schedule_users_table_resize_refresh()
 
     def _t(self, key: str, default: str | None = None) -> str:
         translated = self.controller.translator.tr(key)
         return default if default is not None and translated == key else translated
 
-    def _screen_menu_label(self, screen: str) -> str:
-        return screen_menu_label(screen, self._t)
+    def _can_submit_add_user(self, user_name: str) -> bool:
+        if self.controller.get_user(user_name) is not None:
+            self._notify_result(
+                self.controller.present_error(f"user already exists: {user_name}"),
+                severity="error",
+            )
+            return False
+        return True
+
+    def _screen_menu_label(self, screen: str, *, icon_only: bool = False, short: bool = False) -> str:
+        return screen_menu_label(screen, self._t, icon_only=icon_only, short=short)
+
+    def _set_sections_label_mode(self, mode: str) -> None:
+        self._sections_label_mode = mode
+        root = self.query_one("#root", Vertical)
+        if mode == "icon":
+            root.add_class("sections-icons")
+        else:
+            root.remove_class("sections-icons")
+        if not self.is_mounted:
+            return
+        list_view = self.query_one("#sections-list", ListView)
+        values, index = section_values(self.state.current_screen)
+        items = [item for item in list_view.children if isinstance(item, ValueListItem)]
+        labels = [
+            self._screen_menu_label(
+                name,
+                icon_only=mode == "icon",
+                short=mode == "short",
+            )
+            for name in values
+        ]
+        if len(items) == len(values):
+            for item, label in zip(items, labels, strict=False):
+                item.label_text = label
+                item.query_one(Label).update(Text(label, no_wrap=True, overflow="ellipsis"))
+        self._list_snapshots["sections-list"] = (
+            tuple((value, label) for value, label in zip(values, labels, strict=False)),
+            index,
+        )
 
     def _capture_hardware_snapshot(self) -> None:
         self._hardware_snapshot = capture_hardware_snapshot()
 
     def _update_topbar(self) -> None:
         header = Text()
-        header.append(self._t("app_title", "mtp-manager"), style="bold #ffffff")
+        header.append(self._t("app_title", "mtp-manager"), style=f"bold {APP_HEADER_FG}")
         self.query_one("#topbar-title", Static).update(header)
 
-    def _configure_actions(self) -> list[ActionSpec]:
-        return configure_actions()
+    def _delete_user_confirm_text(self, user_name: str) -> Text:
+        template = self._t("delete_user_confirm")
+        prefix, placeholder, suffix = template.partition("{user}")
+        text = Text(justify="center")
+        if placeholder:
+            text.append(prefix)
+            text.append(user_name, style=f"bold {UI_ACCENT_INK}")
+            text.append(suffix)
+            return text
+        text.append(template)
+        text.append(" ")
+        text.append(user_name, style=f"bold {UI_ACCENT_INK}")
+        return text
 
-    def _source_actions(self) -> list[ActionSpec]:
-        return source_actions()
-
-    def _service_actions(self, service_status: str | None = None) -> list[ActionSpec]:
-        status = service_status or (self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
-        service_active = (status or self.controller.dashboard().service_status).lower() == "active"
-        return service_actions(service_active)
+    def _delete_secret_confirm_text(self, secret_id: int | None) -> Text:
+        secret = self.controller.get_secret(secret_id)
+        secret_name = secret.note if secret is not None and secret.note else "-"
+        template = self._t("delete_secret_confirm")
+        prefix, placeholder, suffix = template.partition("{secret}")
+        text = Text(justify="center")
+        if placeholder:
+            text.append(prefix)
+            text.append(secret_name, style=f"bold {UI_ACCENT_INK}")
+            text.append(suffix)
+            return text
+        text.append(template)
+        text.append(" ")
+        text.append(secret_name, style=f"bold {UI_ACCENT_INK}")
+        return text
 
     def _open_screen(self, screen: str, *, push_history: bool = True) -> None:
         screen = normalize_screen(screen)
@@ -797,6 +328,14 @@ class ManagerTextualApp(App[None]):
 
     def _get_selected_user(self) -> UserRecord | None:
         return selected_user_record(self.users_snapshot, self.state.selected_user)
+
+    def _selected_user_for_actions(self) -> str | None:
+        user_name = self.state.selected_user
+        if not user_name:
+            return None
+        if self.state.current_screen == "users" and not self._users_row_selected:
+            return None
+        return user_name
 
     def _get_selected_secret(self, user: UserRecord | None = None) -> SecretRecord | None:
         return selected_secret_record(user or self._get_selected_user(), self.state.selected_secret_id)
@@ -846,7 +385,7 @@ class ManagerTextualApp(App[None]):
                 action_label(action, self._t),
                 id=f"action-{action.key}",
                 variant=action.variant,
-                classes="action-button",
+                classes=" ".join(part for part in ["action-button", action.classes] if part),
             )
             for action in primary_actions
         ]
@@ -856,6 +395,23 @@ class ManagerTextualApp(App[None]):
             except MountError:
                 return False
         return True
+
+    async def _refresh_action_bar(self) -> None:
+        if not await self._replace_actions(self._action_specs()):
+            self._queue_refresh_ui()
+
+    async def _refresh_open_user_secrets_screen(self) -> None:
+        current_screen = self.screen
+        if not isinstance(current_screen, UserSecretsScreen):
+            return
+        user = self._get_selected_user()
+        secret_items = secret_list_items(user)
+        await current_screen.refresh_content(
+            secrets=secret_items,
+            secret_enabled_states={secret.id: secret.enabled for secret in user.secrets} if user else {},
+            selected_secret_id=self.state.selected_secret_id,
+            list_active=current_screen.list_active,
+        )
 
     def _queue_refresh_ui(self) -> None:
         if self._refresh_ui_scheduled:
@@ -869,41 +425,85 @@ class ManagerTextualApp(App[None]):
             return
         self.run_worker(self.refresh_ui(), exclusive=True)
 
+    def _schedule_users_table_resize_refresh(self) -> None:
+        if self._users_table_resize_timer is not None:
+            self._users_table_resize_timer.stop()
+        self._users_table_resize_timer = self.set_timer(0.06, self._run_users_table_resize_refresh)
+
+    def _users_table_current_layout_signature(self) -> tuple[int, int] | None:
+        if not self.is_mounted or self.state.current_screen != "users":
+            return None
+        if not self.query("#users-table"):
+            return None
+        table = self.query_one("#users-table", UsersTable)
+        users_subpanel = self.query_one("#users-subpanel", Vertical)
+        return table.current_layout_signature(
+            current_screen=self.state.current_screen,
+            users_subpanel=users_subpanel,
+        )
+
+    def _run_users_table_resize_refresh(self) -> None:
+        self._users_table_resize_timer = None
+        if not self.is_mounted or self.state.current_screen != "users":
+            return
+        if not self.query("#users-table"):
+            return
+        self.run_worker(
+            self._refresh_users_table_after_resize(),
+            exclusive=True,
+        )
+
+    async def _refresh_users_table_after_resize(self) -> None:
+        await self.refresh_ui(
+            refresh_sections=False,
+            refresh_user_lists=True,
+            refresh_actions=False,
+            preserve_focus=True,
+        )
+        self.call_after_refresh(self._finalize_users_table_resize_refresh)
+
+    def _finalize_users_table_resize_refresh(self) -> None:
+        if not self.is_mounted or self.state.current_screen != "users":
+            return
+        if not self.query("#users-table"):
+            return
+        signature = self._users_table_current_layout_signature()
+        if signature is not None:
+            self._users_table_layout_signature = signature
+        self._sync_users_table()
+
     def _build_overview_text(self) -> str:
         selected_user = self._get_selected_user()
         if self.state.current_screen == "users":
             if selected_user is None:
                 return self._t("no_users_yet") + "\n\n" + self._t("use_actions_users")
-            return self.controller.selected_detail_text(self.state.selected_user, self.state.selected_secret_id)
+            return self.controller.selected_user_text(self.state.selected_user)
+        if self.state.current_screen == "secrets":
+            if selected_user is None:
+                return self._t("no_users_yet") + "\n\n" + self._t("use_actions_secrets")
+            return self.controller.selected_secret_text(self.state.selected_user, self.state.selected_secret_id)
         return self._t("service_dashboard_controls")
 
     def _render_busy_bar(self, progress: float) -> Text:
-        width = 18
-        filled = max(0, min(width, int((progress / 100) * width)))
-        text = Text()
-        if filled:
-            text.append("▅" * filled, style="#74c69d")
-        if filled < width:
-            text.append("▁" * (width - filled), style="#5b6777")
-        return text
+        return ui_feedback.render_busy_bar(progress)
 
     def _busy_dialog_width(self) -> int:
-        label_width = cell_len(f"{BUSY_FRAMES[self._busy_frame_index]} {self._busy_label}")
-        content_width = max(18, label_width)
-        desired_width = max(32, content_width + 6)
-        available_width = max(20, min(76, self.size.width - 4, max(20, int(self.size.width * 0.72))))
-        return max(20, min(desired_width, available_width))
+        return ui_feedback.busy_dialog_width(
+            label=self._busy_label,
+            frame_index=self._busy_frame_index,
+            viewport_width=self.size.width,
+        )
 
     def _set_actions_disabled(self, disabled: bool) -> None:
-        for widget in self.query(".action-button"):
-            if isinstance(widget, Button):
-                widget.disabled = disabled
+        buttons = [widget for widget in self.query(".action-button") if isinstance(widget, Button)]
+        ui_feedback.set_actions_disabled(buttons, disabled)
 
     def _update_busy_screen(self) -> None:
         if not self.is_mounted:
             return
         self.query_one("#busy-dialog", Vertical).styles.width = self._busy_dialog_width()
-        self.query_one("#busy-label", Static).update(f"{BUSY_FRAMES[self._busy_frame_index]} {self._busy_label}")
+        frame = ui_feedback.BUSY_FRAMES[self._busy_frame_index % len(ui_feedback.BUSY_FRAMES)]
+        self.query_one("#busy-label", Static).update(f"{frame} {self._busy_label}")
         self.query_one("#busy-progress", Static).update(self._render_busy_bar(self._busy_progress))
 
     def _set_busy(self, label: str) -> None:
@@ -934,7 +534,7 @@ class ManagerTextualApp(App[None]):
     def _tick_busy_progress(self) -> None:
         if not self._busy:
             return
-        self._busy_frame_index = (self._busy_frame_index + 1) % len(BUSY_FRAMES)
+        self._busy_frame_index = (self._busy_frame_index + 1) % len(ui_feedback.BUSY_FRAMES)
         if self._busy_progress < 70:
             self._busy_progress += 2.5
         elif self._busy_progress < 85:
@@ -945,9 +545,20 @@ class ManagerTextualApp(App[None]):
             self._busy_progress = 94
         self._update_busy_screen()
 
-    def _default_focus_target(self) -> ListView:
+    def _default_focus_target(self) -> Any:
         if self.state.current_screen == "users":
-            return self.query_one("#users-list", ListView)
+            if not self.users_snapshot:
+                action_buttons = [
+                    widget
+                    for widget in self.query(".action-button")
+                    if isinstance(widget, Button) and widget.display
+                ]
+                if action_buttons:
+                    return action_buttons[0]
+                return self.query_one("#sections-list", ListView)
+            return self.query_one("#users-table", UsersTable)
+        if self.state.current_screen == "secrets":
+            return self.query_one("#secrets-list", ListView)
         return self.query_one("#sections-list", ListView)
 
     def _restore_default_focus(self) -> None:
@@ -957,33 +568,6 @@ class ManagerTextualApp(App[None]):
 
     def _on_main_workspace(self) -> bool:
         return normalize_screen(self.state.current_screen) in SCREEN_ORDER
-
-    def _run_service_cleanup(self) -> str:
-        result = self.controller.service_cleanup()
-        self._capture_hardware_snapshot()
-        return result
-
-    def _run_clear_service_logs(self) -> str:
-        result = self.controller.clear_service_logs()
-        self._capture_hardware_snapshot()
-        return result
-
-    def _service_logs_actions(self) -> list[ActionSpec]:
-        return [
-            ActionSpec("clear_service_logs", self._t("clean", "Clean"), "error", "viewer-danger-action"),
-        ]
-
-    def _service_status_actions(self) -> list[ActionSpec]:
-        return [
-            ActionSpec("copy_service_status", self._t("copy", "Copy")),
-        ]
-
-    def _handle_service_status_viewer_action(self, action: str) -> bool:
-        if action != "copy_service_status":
-            return False
-        self._copy_text(self.controller.service_status_text())
-        self.notify(self._t("copied_to_clipboard", "Copied to clipboard."), severity="information")
-        return True
 
     def _copy_text(self, text: str) -> None:
         self.copy_to_clipboard(text)
@@ -996,44 +580,6 @@ class ManagerTextualApp(App[None]):
             subprocess.run([pbcopy], input=text.encode("utf-8"), check=False)
         except OSError:
             return
-
-    def _open_service_logs_screen(self) -> None:
-        self.push_screen(
-            FullscreenTextScreen(
-                self._t("service_logs_title"),
-                self.controller.service_logs_text(),
-                clear_before_close=True,
-                actions=translated_actions(self._service_logs_actions(), self._t),
-                close_label=self._t("close", "Close"),
-            ),
-            self._handle_service_logs_modal_result,
-        )
-
-    def _open_service_status_screen(self) -> None:
-        self.push_screen(
-            FullscreenTextScreen(
-                self._t("service_status_title"),
-                self.controller.service_status_text(),
-                actions=translated_actions(self._service_status_actions(), self._t),
-                action_handler=self._handle_service_status_viewer_action,
-                close_label=self._t("close", "Close"),
-            )
-        )
-
-    def _handle_service_logs_modal_result(self, result: str | None) -> None:
-        if result == "clear_service_logs":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_clear_service_logs,
-                busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
-            )
-            return
-        if result == "service_cleanup":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_service_cleanup,
-                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
-            )
 
     async def _refresh_user_selection_view(self, *, refresh_users: bool = False, refresh_secrets: bool = False) -> None:
         self._refresh_selection()
@@ -1048,7 +594,17 @@ class ManagerTextualApp(App[None]):
 
     def _section_items(self) -> tuple[list[ValueListItem], int]:
         values, index = section_values(self.state.current_screen)
-        items = [ValueListItem(name, self._screen_menu_label(name)) for name in values]
+        items = [
+            ValueListItem(
+                name,
+                self._screen_menu_label(
+                    name,
+                    icon_only=self._sections_label_mode == "icon",
+                    short=self._sections_label_mode == "short",
+                ),
+            )
+            for name in values
+        ]
         return items, index
 
     def _user_items(self) -> tuple[list[ValueListItem], int | None]:
@@ -1056,12 +612,92 @@ class ManagerTextualApp(App[None]):
         items = [ValueListItem(value, label) for value, label in entries]
         return items, index
 
+    def _sorted_users_snapshot(self) -> list[UserRecord]:
+        return UsersTable.sorted_users(
+            self.users_snapshot,
+            sort_column=self._users_sort_column,
+            sort_reverse=self._users_sort_reverse,
+        )
+
+    def _users_header_text(self, label_key: str, fallback: str, column_key: str) -> Text:
+        return UsersTable.header_text(
+            self._t,
+            sort_column=self._users_sort_column,
+            sort_reverse=self._users_sort_reverse,
+            label_key=label_key,
+            fallback=fallback,
+            column_key=column_key,
+        )
+
+    def _set_users_table_selection_state(self, table: DataTable) -> None:
+        if isinstance(table, UsersTable):
+            table.set_selection_state(self._users_row_selected)
+
+    @staticmethod
+    def _users_table_cell_text(value: object) -> str:
+        return UsersTable.cell_text(value)
+
+    def _apply_users_table_sort(self, table: DataTable) -> None:
+        if not isinstance(table, UsersTable) or table.row_count == 0:
+            return
+        table.apply_sort(
+            sort_column=self._users_sort_column,
+            sort_reverse=self._users_sort_reverse,
+            selected_user=self.state.selected_user,
+            row_selected=self._users_row_selected,
+            translate=self._t,
+        )
+
+    def _sync_users_table(self) -> None:
+        table = self.query_one("#users-table", UsersTable)
+        if not table.is_attached:
+            return
+
+        width_candidates = [
+            self.query_one("#users-subpanel", Vertical).content_region.width,
+            table.content_region.width,
+            self.query_one("#explorer-panel", Vertical).content_region.width,
+            self.query_one("#content-column", Vertical).content_region.width,
+            self.query_one("#users-subpanel", Vertical).size.width,
+            table.size.width,
+            self.query_one("#explorer-panel", Vertical).size.width,
+            self.query_one("#content-column", Vertical).size.width,
+        ]
+        panel_width = next((width for width in width_candidates if width and width > 24), 64)
+        table_height_candidates = [
+            self.query_one("#users-subpanel", Vertical).content_region.height,
+            table.content_region.height,
+            self.query_one("#users-subpanel", Vertical).size.height,
+            table.size.height,
+        ]
+        panel_height = next((height for height in table_height_candidates if height and height > 0), 0)
+        self._users_table_layout_signature = (panel_width, panel_height)
+        self.state.selected_user = table.sync_rows(
+            users_snapshot=self.users_snapshot,
+            selected_user=self.state.selected_user,
+            sort_column=self._users_sort_column,
+            sort_reverse=self._users_sort_reverse,
+            row_selected=self._users_row_selected,
+            translate=self._t,
+            panel_width=panel_width,
+        )
+
     def _secret_items(self) -> tuple[list[ValueListItem], int | None]:
         entries, index = secret_entries(self._get_selected_user(), self.state.selected_secret_id)
         items = [ValueListItem(value, label) for value, label in entries]
         return items, index
 
     def _action_specs(self) -> list[ActionSpec]:
+        if self.state.current_screen == "users":
+            actions = [ActionSpec("add_user", self._t("add", "Add"), "success")]
+            if self.users_snapshot and self._users_row_selected and self.state.selected_user:
+                actions.extend(
+                    [
+                        ActionSpec("user_configure", self._t("manage", "Manage")),
+                        ActionSpec("delete_user", self._t("delete", "Delete"), "error"),
+                    ]
+                )
+            return actions
         return primary_screen_actions(self.state.current_screen, bool(self.screen_history))
 
     async def refresh_ui(
@@ -1079,7 +715,10 @@ class ManagerTextualApp(App[None]):
         self._refresh_selection()
         self._update_topbar()
         dashboard_mode = self.state.current_screen == "dashboard"
-        users_mode = self.state.current_screen == "users"
+        users_mode = self.state.current_screen in {"users", "secrets"}
+        users_screen = self.state.current_screen == "users"
+        secrets_screen = self.state.current_screen == "secrets"
+        has_users = bool(self.users_snapshot)
         self._dashboard_snapshot = self.controller.dashboard() if dashboard_mode else None
         self.query_one("#sections-title", Static).update(self._t("sections"))
         self.query_one("#overview-title", Static).update(
@@ -1093,15 +732,24 @@ class ManagerTextualApp(App[None]):
             "quit_app_hint",
             "Close application",
         )
-        self.query_one("#explorer-title", Static).update(self._t("users_secrets"))
-        self.query_one("#users-title", Static).update(self._t("users"))
-        self.query_one("#secrets-title", Static).update(self._t("secrets"))
-        self.query_one("#overview-content", Static).update(
-            render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
-            if dashboard_mode
-            else render_fields(self._build_overview_text())
+        self.query_one("#explorer-title", Static).update(
+            self._t("users") if users_screen else self._t("secrets") if secrets_screen else self._t("users_secrets")
         )
-        self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
+        users_title = self.query_one("#users-title", Static)
+        secrets_title = self.query_one("#secrets-title", Static)
+        users_empty_state = self.query_one("#users-empty-state", Static)
+        users_table = self.query_one("#users-table", UsersTable)
+        users_title.update(self._t("users"))
+        self.query_one("#secrets-title", Static).update(self._t("secrets"))
+        users_empty_state.update(self._t("no_users_yet"))
+        if dashboard_mode:
+            self.query_one("#overview-content", Static).update(
+                render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
+            )
+            self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
+        elif not users_screen:
+            self.query_one("#overview-content", Static).update(render_fields(self._build_overview_text()))
+            self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
         activity_title = self.state.output_title if self.state.output_body.strip() else self._t("activity")
         activity_body = self.state.output_body or ""
         self.query_one("#activity-title", Static).update(activity_title)
@@ -1110,7 +758,63 @@ class ManagerTextualApp(App[None]):
         show_activity_panel = bool(activity_body.strip()) and not self._busy
         self.query_one("#explorer-panel", Vertical).display = show_user_lists
         self.query_one("#activity-panel", Vertical).display = show_activity_panel
-        self.query_one("#row-secondary", Horizontal).display = show_user_lists or show_activity_panel
+        explorer_panel = self.query_one("#explorer-panel", Vertical)
+        overview_panel = self.query_one("#overview-panel", Vertical)
+        activity_panel = self.query_one("#activity-panel", Vertical)
+        content_column = self.query_one("#content-column", Vertical)
+        if dashboard_mode:
+            content_column.remove_class("users-only")
+            overview_panel.display = True
+            overview_panel.styles.height = "1fr"
+            explorer_panel.styles.height = "auto"
+        elif users_screen:
+            content_column.add_class("users-only")
+            overview_panel.display = False
+            explorer_panel.styles.height = "1fr"
+        elif secrets_screen:
+            content_column.remove_class("users-only")
+            overview_panel.display = True
+            explorer_panel.styles.height = 11
+            overview_panel.styles.height = "1fr"
+        else:
+            content_column.remove_class("users-only")
+            overview_panel.display = True
+            overview_panel.styles.height = "1fr"
+            explorer_panel.styles.height = "auto"
+        activity_panel.styles.height = "auto"
+        users_subpanel = self.query_one("#users-subpanel", Vertical)
+        secrets_subpanel = self.query_one("#secrets-subpanel", Vertical)
+        users_list = self.query_one("#users-list", ListView)
+        if users_screen:
+            users_title.display = False
+            users_table.display = has_users
+            users_list.display = False
+            users_empty_state.display = not has_users
+            secrets_title.display = False
+            users_subpanel.display = True
+            users_subpanel.styles.width = "1fr"
+            secrets_subpanel.display = False
+            secrets_subpanel.styles.width = "1fr"
+        elif secrets_screen:
+            users_title.display = True
+            users_table.display = False
+            users_list.display = True
+            users_empty_state.display = False
+            secrets_title.display = True
+            users_subpanel.display = True
+            users_subpanel.styles.width = 20
+            secrets_subpanel.display = True
+            secrets_subpanel.styles.width = "1fr"
+        else:
+            users_title.display = True
+            users_table.display = False
+            users_list.display = True
+            users_empty_state.display = False
+            secrets_title.display = True
+            users_subpanel.display = True
+            users_subpanel.styles.width = "1fr"
+            secrets_subpanel.display = True
+            secrets_subpanel.styles.width = "1fr"
         if show_activity_panel:
             self.query_one("#activity-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
 
@@ -1123,9 +827,13 @@ class ManagerTextualApp(App[None]):
                 self._queue_refresh_ui()
                 return
         if refresh_user_lists:
-            if not await self._replace_list("users-list", user_items, user_index):
-                self._queue_refresh_ui()
-                return
+            if users_screen:
+                if has_users:
+                    self._sync_users_table()
+            else:
+                if not await self._replace_list("users-list", user_items, user_index):
+                    self._queue_refresh_ui()
+                    return
             if not await self._replace_list("secrets-list", secret_items, secret_index):
                 self._queue_refresh_ui()
                 return
@@ -1133,6 +841,8 @@ class ManagerTextualApp(App[None]):
             if not await self._replace_actions(self._action_specs()):
                 self._queue_refresh_ui()
                 return
+        if isinstance(self.screen, UserSecretsScreen):
+            await self._refresh_open_user_secrets_screen()
         self._apply_top_split()
         if preserve_focus:
             return
@@ -1148,8 +858,7 @@ class ManagerTextualApp(App[None]):
         self._set_activity(self._t("activity"), "")
 
     def _notify_result(self, message: str, *, severity: str = "information") -> None:
-        self.state.status_message = message
-        self.notify(message, severity=severity)
+        ui_feedback.notify_result(self.state, self.notify, message, severity=severity)
 
     def _execute_action(
         self,
@@ -1157,27 +866,14 @@ class ManagerTextualApp(App[None]):
         *,
         output_title: str | None = None,
         success_message: str | None = None,
-    ) -> ActionTaskResult:
-        try:
-            result = fn()
-        except Exception as exc:
-            return ActionTaskResult(self._t("activity"), "", self.controller.present_error(str(exc)), "error")
-
-        if output_title is not None:
-            if isinstance(result, (AppSettings, UserRecord, SecretRecord)):
-                output_body = ""
-            else:
-                output_body = str(result)
-        else:
-            output_body = ""
-
-        if success_message:
-            status_message = success_message
-        elif isinstance(result, str):
-            status_message = result
-        else:
-            status_message = self._t("action_completed")
-        return ActionTaskResult(output_title or self._t("activity"), output_body, status_message)
+    ) -> ui_feedback.ActionTaskResult:
+        return ui_feedback.execute_action(
+            fn,
+            translate=self._t,
+            present_error=self.controller.present_error,
+            output_title=output_title,
+            success_message=success_message,
+        )
 
     def _run_action(
         self,
@@ -1195,6 +891,23 @@ class ManagerTextualApp(App[None]):
             thread=True,
         )
 
+    def _reopen_followup_screen(self, reopen_after_action: object) -> bool:
+        if reopen_after_action == "service_logs":
+            self.call_after_refresh(self._open_service_logs_screen)
+            return True
+        if isinstance(reopen_after_action, tuple) and len(reopen_after_action) == 3 and reopen_after_action[0] == "user_secrets":
+            _, user_name, secret_id = reopen_after_action
+
+            def reopen_user_secrets() -> None:
+                if isinstance(user_name, str):
+                    self.state.selected_user = user_name
+                self.state.selected_secret_id = secret_id if isinstance(secret_id, int) else None
+                self._open_user_secrets_screen(selected_secret_id=self.state.selected_secret_id)
+
+            self.call_after_refresh(reopen_user_secrets)
+            return True
+        return False
+
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "action":
             return
@@ -1208,10 +921,13 @@ class ManagerTextualApp(App[None]):
             self.state.output_body = result.output_body
             self._notify_result(result.status_message, severity=result.severity)
             self._clear_busy()
+            reopen_after_action = self._reopen_screen_after_action
+            self._reopen_screen_after_action = None
             self.run_worker(self.refresh_ui(), exclusive=True)
-            if self._reopen_screen_after_action == "service_logs":
-                self._reopen_screen_after_action = None
-                self.call_after_refresh(self._open_service_logs_screen)
+            if isinstance(self.screen, UserConfigureMenuScreen):
+                self.call_after_refresh(self._refresh_open_user_configure_menu)
+            if self._reopen_followup_screen(reopen_after_action):
+                return
             return
         if event.state == WorkerState.ERROR:
             self._busy_progress = 100
@@ -1221,8 +937,12 @@ class ManagerTextualApp(App[None]):
             self.state.output_body = ""
             self._notify_result(message, severity="error")
             self._clear_busy()
+            reopen_after_action = self._reopen_screen_after_action
             self._reopen_screen_after_action = None
             self.run_worker(self.refresh_ui(), exclusive=True)
+            if isinstance(self.screen, UserConfigureMenuScreen):
+                self.call_after_refresh(self._refresh_open_user_configure_menu)
+            self._reopen_followup_screen(reopen_after_action)
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         if self._busy:
@@ -1232,11 +952,16 @@ class ManagerTextualApp(App[None]):
             return
         list_id = event.list_view.id or ""
         if list_id == "sections-list":
-            if str(item.value) == "language":
+            screen = normalize_screen(str(item.value))
+            if screen == "language":
                 self._open_language_menu()
                 return
-            self._open_screen(str(item.value))
-            await self.refresh_ui()
+            if screen == self.state.current_screen:
+                if screen == "dashboard":
+                    self._handle_ui_action("refresh")
+                return
+            self._open_screen(screen)
+            await self.refresh_ui(refresh_sections=False)
             return
         if list_id == "users-list":
             self.state.selected_user = str(item.value)
@@ -1259,7 +984,7 @@ class ManagerTextualApp(App[None]):
                 return
             if screen != self.state.current_screen:
                 self._open_screen(screen)
-                await self.refresh_ui()
+                await self.refresh_ui(refresh_sections=False)
             return
         if list_id == "users-list":
             user_name = str(item.value)
@@ -1272,6 +997,68 @@ class ManagerTextualApp(App[None]):
             if secret_id != self.state.selected_secret_id:
                 self.state.selected_secret_id = secret_id
                 await self._refresh_user_selection_view()
+
+    async def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if self._busy or event.data_table.id != "users-table" or self.state.current_screen != "users":
+            return
+        if not self._users_row_selected:
+            return
+        users = self._sorted_users_snapshot()
+        if 0 <= event.cursor_row < len(users):
+            user_name = users[event.cursor_row].name
+            if user_name != self.state.selected_user:
+                self.state.selected_user = user_name
+
+    async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if self._busy or event.data_table.id != "users-table" or self.state.current_screen != "users":
+            return
+        users = self._sorted_users_snapshot()
+        if 0 <= event.cursor_row < len(users):
+            user_name = users[event.cursor_row].name
+            if user_name == self.state.selected_user and self._users_row_selected:
+                self._users_row_selected = False
+                self._set_users_table_selection_state(event.data_table)
+                await self._refresh_action_bar()
+                event.data_table.focus()
+                return
+            self.state.selected_user = user_name
+            self._users_row_selected = True
+            self._set_users_table_selection_state(event.data_table)
+            await self._refresh_action_bar()
+            return
+
+    async def on_users_table_row_clicked(self, message: UsersTable.RowClicked) -> None:
+        if self._busy or self.state.current_screen != "users":
+            return
+        users = self._sorted_users_snapshot()
+        if not (0 <= message.row_index < len(users)):
+            return
+        table = message.table
+        user_name = users[message.row_index].name
+        if user_name == self.state.selected_user and self._users_row_selected:
+            self._users_row_selected = False
+            self._set_users_table_selection_state(table)
+            await self._refresh_action_bar()
+            table.focus()
+            return
+        self.state.selected_user = user_name
+        self._users_row_selected = True
+        self._set_users_table_selection_state(table)
+        await self._refresh_action_bar()
+        table.move_cursor(row=message.row_index, column=0, animate=False, scroll=True)
+        table.focus()
+
+    async def on_users_table_header_clicked(self, message: UsersTable.HeaderClicked) -> None:
+        if self._busy or self.state.current_screen != "users":
+            return
+        column = message.column_key
+        if column == self._users_sort_column:
+            self._users_sort_reverse = not self._users_sort_reverse
+        else:
+            self._users_sort_column = column
+            self._users_sort_reverse = False
+        self._apply_users_table_sort(message.table)
+        message.table.focus()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._busy:
@@ -1336,6 +1123,12 @@ class ManagerTextualApp(App[None]):
                 self._handle_settings_screen,
             )
             return
+        if action == "user_configure":
+            self._open_user_configure_menu()
+            return
+        if action == "user_secrets":
+            self._open_user_secrets_screen()
+            return
         if action == "show_export":
             self._run_action(
                 lambda: self.controller.export_text_for_user(self.state.selected_user),
@@ -1389,12 +1182,14 @@ class ManagerTextualApp(App[None]):
                     self._t("add_user_prompt"),
                     save_label=self._t("save", "Save"),
                     cancel_label=self._t("cancel", "Cancel"),
+                    submit_handler=self._can_submit_add_user,
                 ),
                 self._handle_add_user,
             )
             return
         if action == "add_secret":
-            if not self.state.selected_user:
+            user_name = self._selected_user_for_actions()
+            if not user_name:
                 self._notify_result(self._t("select_user_to_continue"), severity="warning")
                 return
             self.push_screen(
@@ -1408,25 +1203,39 @@ class ManagerTextualApp(App[None]):
             )
             return
         if action == "enable_user":
-            self._run_action(lambda: self.controller.set_user_enabled(self.state.selected_user or "", True))
+            user_name = self._selected_user_for_actions()
+            if not user_name:
+                self._notify_result(self._t("select_user_to_continue"), severity="warning")
+                return
+            self._run_action(lambda: self.controller.set_user_enabled(user_name, True))
             return
         if action == "disable_user":
-            self._run_action(lambda: self.controller.set_user_enabled(self.state.selected_user or "", False))
+            user_name = self._selected_user_for_actions()
+            if not user_name:
+                self._notify_result(self._t("select_user_to_continue"), severity="warning")
+                return
+            self._run_action(lambda: self.controller.set_user_enabled(user_name, False))
             return
         if action == "rotate_user":
-            self._run_action(lambda: self.controller.rotate_user(self.state.selected_user or ""))
+            user_name = self._selected_user_for_actions()
+            if not user_name:
+                self._notify_result(self._t("select_user_to_continue"), severity="warning")
+                return
+            self._run_action(lambda: self.controller.rotate_user(user_name))
             return
         if action == "delete_user":
-            if not self.state.selected_user:
+            user_name = self._selected_user_for_actions()
+            if not user_name:
                 self._notify_result(self._t("select_user_to_continue"), severity="warning")
                 return
             self.push_screen(
                 ConfirmScreen(
                     self._t("delete_user_title"),
-                    self._t("delete_user_confirm", user=self.state.selected_user),
+                    self._delete_user_confirm_text(user_name),
                     self._t("delete", "Delete"),
                     cancel_label=self._t("cancel", "Cancel"),
                     confirm_variant="error",
+                    center_message=True,
                 ),
                 self._handle_delete_user,
             )
@@ -1447,10 +1256,11 @@ class ManagerTextualApp(App[None]):
             self.push_screen(
                 ConfirmScreen(
                     self._t("delete_secret_title"),
-                    self._t("delete_secret_confirm", secret_id=self.state.selected_secret_id),
+                    self._delete_secret_confirm_text(self.state.selected_secret_id),
                     self._t("delete", "Delete"),
                     cancel_label=self._t("cancel", "Cancel"),
                     confirm_variant="error",
+                    center_message=True,
                 ),
                 self._handle_delete_secret,
             )
@@ -1509,188 +1319,6 @@ class ManagerTextualApp(App[None]):
         if action == "lang_zh":
             self._change_language("zh")
 
-    def _handle_action_menu(self, action: str | None) -> None:
-        if action is None:
-            self.call_after_refresh(self._restore_default_focus)
-            return
-        if action:
-            self._handle_ui_action(action)
-
-    def _open_configure_menu(self) -> None:
-        self.push_screen(
-            ActionMenuScreen(self._t("configure"), translated_actions(self._configure_actions(), self._t), close_label=self._t("close", "Close")),
-            self._handle_action_menu,
-        )
-
-    def _open_service_menu(self) -> None:
-        self.push_screen(self._build_service_menu_screen(), self._handle_service_menu_result)
-
-    def _build_service_menu_screen(self) -> ServiceMenuScreen:
-        return ServiceMenuScreen(
-            self._t("service_control"),
-            translated_actions(self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None), self._t),
-            open_status=self._open_service_status_screen,
-            open_logs=self._open_service_logs_screen,
-            close_label=self._t("close", "Close"),
-        )
-
-    def _handle_service_menu_result(self, action: str | None) -> None:
-        if action is None:
-            self.call_after_refresh(self._restore_default_focus)
-            return
-        self._handle_ui_action(action)
-
-    def _open_source_menu(self) -> None:
-        self.push_screen(
-            ActionMenuScreen(self._t("source", "Binary"), translated_actions(self._source_actions(), self._t), close_label=self._t("close", "Close")),
-            self._handle_source_menu_result,
-        )
-
-    def _handle_source_menu_result(self, action: str | None) -> None:
-        if action is None:
-            self._open_configure_menu()
-            return
-        self._handle_action_menu(action)
-
-    def _open_language_menu(self) -> None:
-        actions = [
-            ActionSpec("lang_en", self._t("english", "English")),
-            ActionSpec("lang_ru", self._t("russian", "Russian")),
-            ActionSpec("lang_zh", self._t("chinese", "Chinese")),
-        ]
-        self.push_screen(
-            ActionMenuScreen(
-                self._t("language"),
-                actions,
-                auto_focus_first=False,
-                close_label=self._t("close", "Close"),
-                compact=True,
-            ),
-            self._handle_language_menu,
-        )
-
-    def _handle_language_menu(self, action: str | None) -> None:
-        self.state.current_screen = "dashboard"
-        if action:
-            self._handle_ui_action(action)
-            return
-        self.call_after_refresh(self._restore_default_focus)
-        self.run_worker(self.refresh_ui(), exclusive=True)
-
-    def _change_language(self, lang: str) -> None:
-        try:
-            self.controller.set_language(lang)
-        except Exception as exc:
-            self._notify_result(self.controller.present_error(str(exc)), severity="error")
-            self.run_worker(self.refresh_ui(), exclusive=True)
-            return
-        self.state.output_title = self._t("activity")
-        self.state.output_body = ""
-        self._notify_result(self._t("language_changed"))
-        self.run_worker(self.refresh_ui(), exclusive=True)
-
-    def _run_secret_action(self, action: Callable[[int], object]) -> None:
-        if self.state.selected_secret_id is None:
-            self._notify_result(self._t("select_secret_to_continue"), severity="warning")
-            return
-        self._run_action(lambda: action(self.state.selected_secret_id))
-
-    def _handle_add_user(self, result: str | None) -> None:
-        if result:
-            self._run_action(lambda: self.controller.add_user(result), success_message=self._t("user_added", user=result))
-            return
-        self.call_after_refresh(self._restore_default_focus)
-
-    def _handle_add_secret(self, result: str | None) -> None:
-        if result is not None and self.state.selected_user:
-            self._run_action(
-                lambda: self.controller.add_secret(self.state.selected_user or "", result),
-                success_message=self._t("secret_added", user=self.state.selected_user),
-            )
-            return
-        self.call_after_refresh(self._restore_default_focus)
-
-    def _handle_install_ref(self, result: str | None) -> None:
-        if result is None:
-            self._open_source_menu()
-            return
-        busy_label = self._t("installing_ref", ref=result.strip()) if result.strip() else self._t("installing_latest")
-        self._run_action(
-            lambda: self.controller.install_telemt_ref(result),
-            busy_label=busy_label,
-        )
-
-    def _handle_settings_screen(self, result: dict[str, str] | None) -> None:
-        if not result:
-            self._open_configure_menu()
-            return
-        def apply_settings() -> str:
-            try:
-                mt_port = int(result["mt_port"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field", field=self._t("proxy_port"))) from exc
-            try:
-                stats_port = int(result["stats_port"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field", field=self._t("api_port"))) from exc
-            try:
-                workers = int(result["workers"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field", field=self._t("workers"))) from exc
-            self.controller.update_settings(
-                mt_port=mt_port,
-                stats_port=stats_port,
-                workers=workers,
-                fake_tls_domain=result["fake_tls_domain"],
-                ad_tag=result["ad_tag"],
-            )
-            return self._t("settings_saved_applied", "Settings saved and applied.")
-
-        self._run_action(
-            apply_settings,
-            busy_label=f"{self._t('edit_settings', 'Edit')}...",
-        )
-
-    def _handle_delete_user(self, confirmed: bool) -> None:
-        if confirmed and self.state.selected_user:
-            self._run_action(lambda: self.controller.delete_user(self.state.selected_user or ""))
-            return
-        self.call_after_refresh(self._restore_default_focus)
-
-    def _handle_delete_secret(self, confirmed: bool) -> None:
-        if confirmed and self.state.selected_secret_id is not None:
-            self._run_action(lambda: self.controller.delete_secret(self.state.selected_secret_id))
-            return
-        self.call_after_refresh(self._restore_default_focus)
-
-    def _handle_factory_reset(self, confirmed: bool) -> None:
-        if confirmed:
-            self._run_action(
-                lambda: self.controller.factory_reset(remove_swap=False),
-                busy_label=f"{self._t('factory_reset', 'Factory Reset')}...",
-            )
-            return
-        self._open_configure_menu()
-
-    def _open_quit_confirmation(self) -> None:
-        self.push_screen(
-            ConfirmScreen(
-                self._t("quit_confirm_title", "Quit"),
-                self._t("quit_confirm_message", "Close mtp-manager?"),
-                self._t("quit_confirm_button", "Quit"),
-                cancel_label=self._t("cancel", "Cancel"),
-                confirm_variant="warning",
-                center_message=True,
-            ),
-            self._handle_quit_confirmation,
-        )
-
-    def _handle_quit_confirmation(self, confirmed: bool) -> None:
-        if confirmed:
-            self.exit()
-            return
-        self.call_after_refresh(self._restore_default_focus)
-
     async def action_go_back(self) -> None:
         if self._on_main_workspace():
             self._open_quit_confirmation()
@@ -1706,10 +1334,10 @@ class ManagerTextualApp(App[None]):
         self._open_quit_confirmation()
 
     def action_quit_app(self) -> None:
-        if self._on_main_workspace():
-            self._open_quit_confirmation()
+        current_screen = self.screen
+        if isinstance(current_screen, ConfirmScreen) and current_screen.title_text == self._t("quit_confirm_title", "Quit"):
             return
-        self.exit()
+        self._open_quit_confirmation()
 
     def action_copy_selection(self) -> None:
         selected_text = self.screen.get_selected_text()

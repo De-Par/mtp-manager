@@ -8,12 +8,68 @@ from dataclasses import dataclass
 from i18n.en import CATALOG as EN_CATALOG
 from i18n.ru import CATALOG as RU_CATALOG
 from i18n.zh import CATALOG as ZH_CATALOG
+from rich.cells import cell_len
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual import events
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Static
+from textual.widget import MountError
+from textual.widgets import Button, Input, ListView, Static
 
 from models.settings import AppSettings
+from ui.dashboard import render_fields
+from ui.theme import (
+    ACCENT_LIGHT_BG,
+    ACCENT_MID_BG,
+    APP_SURFACE,
+    BUTTON_DEFAULT_HOVER_BG,
+    BUTTON_DANGER_BORDER,
+    BUTTON_DANGER_HOVER_BG,
+    BUTTON_DANGER_HOVER_BORDER,
+    BUTTON_DANGER_TEXT,
+    BUTTON_FOCUS_BORDER,
+    BUTTON_FLAT_BORDER,
+    BUTTON_FLAT_TEXT,
+    BUTTON_HEIGHT,
+    BUTTON_SUCCESS_HOVER_BG,
+    BUTTON_WARNING_BG,
+    BUTTON_WARNING_BORDER,
+    BUTTON_WARNING_FOCUS_BORDER,
+    BUTTON_WARNING_FOCUS_TEXT,
+    BUTTON_WARNING_HOVER_BG,
+    BUTTON_WARNING_HOVER_BORDER,
+    BUTTON_WARNING_TEXT,
+    CONTENT_SUBTLE_TEXT,
+    DIALOG_BUTTON_WIDTH,
+    FOCUS_INK,
+    INPUT_BORDER,
+    LIST_ROW_EVEN_BG,
+    LIST_ROW_ODD_BG,
+    MENU_BUTTON_WIDTH,
+    SCROLLBAR_SIZE,
+    SPLIT_HANDLE_FOCUS_BG,
+    SPLIT_HANDLE_FOCUS_COLOR,
+    SPLIT_HANDLE_HOVER_BG,
+    SPLIT_HANDLE_HOVER_COLOR,
+    SPLIT_HANDLE_COLOR,
+    THEME_CSS_TOKENS,
+    UI_ACCENT_INK,
+    UI_BORDER,
+    UI_BORDER_ACTIVE,
+    UI_INK,
+    VIEWER_ACTION_BUTTON_WIDTH,
+    VIEWER_BG,
+    VIEWER_BORDER,
+    VIEWER_CLOSE_BG,
+    VIEWER_CLOSE_BG_HOVER,
+    VIEWER_CLOSE_BORDER_FOCUS,
+    VIEWER_FG,
+    VIEWER_SCROLLBAR_BG,
+    VIEWER_SCROLLBAR_BG_ACTIVE,
+    VIEWER_SCROLLBAR_BG_HOVER,
+)
+from ui.widgets import ValueListItem
 
 WINDOW_TITLE_EMOJI_KEYS = {
     "actions": "⚡",
@@ -27,8 +83,8 @@ WINDOW_TITLE_EMOJI_KEYS = {
     "quit_confirm_title": "🚪",
     "add_user": "👤",
     "add_secret": "🔐",
-    "delete_user_title": "🗑️",
-    "delete_secret_title": "🗑️",
+    "delete_user_title": "🗑",
+    "delete_secret_title": "🗑",
     "factory_reset": "🚨",
     "export_title": "📤",
     "export": "📤",
@@ -48,6 +104,59 @@ def _build_window_title_emojis() -> dict[str, str]:
 WINDOW_TITLE_EMOJIS = _build_window_title_emojis()
 
 
+CSS_REPLACEMENTS = {
+    "ACCENT_LIGHT_BG": ACCENT_LIGHT_BG,
+    "ACCENT_MID_BG": ACCENT_MID_BG,
+    "APP_SURFACE": APP_SURFACE,
+    "BUTTON_DEFAULT_HOVER_BG": BUTTON_DEFAULT_HOVER_BG,
+    "BUTTON_DANGER_BORDER": BUTTON_DANGER_BORDER,
+    "BUTTON_DANGER_HOVER_BG": BUTTON_DANGER_HOVER_BG,
+    "BUTTON_DANGER_HOVER_BORDER": BUTTON_DANGER_HOVER_BORDER,
+    "BUTTON_DANGER_TEXT": BUTTON_DANGER_TEXT,
+    "BUTTON_FOCUS_BORDER": BUTTON_FOCUS_BORDER,
+    "BUTTON_HEIGHT": BUTTON_HEIGHT,
+    "BUTTON_SUCCESS_HOVER_BG": BUTTON_SUCCESS_HOVER_BG,
+    "BUTTON_WARNING_BG": BUTTON_WARNING_BG,
+    "BUTTON_WARNING_BORDER": BUTTON_WARNING_BORDER,
+    "BUTTON_WARNING_FOCUS_BORDER": BUTTON_WARNING_FOCUS_BORDER,
+    "BUTTON_WARNING_FOCUS_TEXT": BUTTON_WARNING_FOCUS_TEXT,
+    "BUTTON_WARNING_HOVER_BG": BUTTON_WARNING_HOVER_BG,
+    "BUTTON_WARNING_HOVER_BORDER": BUTTON_WARNING_HOVER_BORDER,
+    "BUTTON_WARNING_TEXT": BUTTON_WARNING_TEXT,
+    "CONTENT_SUBTLE_TEXT": CONTENT_SUBTLE_TEXT,
+    "DIALOG_BUTTON_WIDTH": DIALOG_BUTTON_WIDTH,
+    "FOCUS_INK": FOCUS_INK,
+    "INPUT_BORDER": INPUT_BORDER,
+    "LIST_ROW_EVEN_BG": LIST_ROW_EVEN_BG,
+    "LIST_ROW_ODD_BG": LIST_ROW_ODD_BG,
+    "MENU_BUTTON_WIDTH": MENU_BUTTON_WIDTH,
+    "SCROLLBAR_SIZE": SCROLLBAR_SIZE,
+    "SPLIT_HANDLE_COLOR": SPLIT_HANDLE_COLOR,
+    "SPLIT_HANDLE_FOCUS_BG": SPLIT_HANDLE_FOCUS_BG,
+    "SPLIT_HANDLE_FOCUS_COLOR": SPLIT_HANDLE_FOCUS_COLOR,
+    "SPLIT_HANDLE_HOVER_BG": SPLIT_HANDLE_HOVER_BG,
+    "SPLIT_HANDLE_HOVER_COLOR": SPLIT_HANDLE_HOVER_COLOR,
+    "UI_ACCENT_INK": UI_ACCENT_INK,
+    "UI_BORDER_ACTIVE": UI_BORDER_ACTIVE,
+    "VIEWER_ACTION_BUTTON_WIDTH": VIEWER_ACTION_BUTTON_WIDTH,
+    "VIEWER_BG": VIEWER_BG,
+    "VIEWER_BORDER": VIEWER_BORDER,
+    "VIEWER_CLOSE_BG": VIEWER_CLOSE_BG,
+    "VIEWER_CLOSE_BG_HOVER": VIEWER_CLOSE_BG_HOVER,
+    "VIEWER_CLOSE_BORDER_FOCUS": VIEWER_CLOSE_BORDER_FOCUS,
+    "VIEWER_FG": VIEWER_FG,
+    "VIEWER_SCROLLBAR_BG": VIEWER_SCROLLBAR_BG,
+    "VIEWER_SCROLLBAR_BG_ACTIVE": VIEWER_SCROLLBAR_BG_ACTIVE,
+    "VIEWER_SCROLLBAR_BG_HOVER": VIEWER_SCROLLBAR_BG_HOVER,
+}
+
+
+def _css(template: str) -> str:
+    for key, value in CSS_REPLACEMENTS.items():
+        template = template.replace(f"@@{key}@@", str(value))
+    return template
+
+
 def format_window_title(title: str) -> str:
     """Attach a small context emoji to modal titles when helpful"""
     title = title.strip()
@@ -56,7 +165,13 @@ def format_window_title(title: str) -> str:
     if title[0] in "⚡⚙🛠📜📡🌐👤🔐🗑🚨📤📈":
         return title
     emoji = WINDOW_TITLE_EMOJIS.get(title.casefold(), "✨")
-    return f"{emoji} {title}"
+    return f"{emoji}  {title}"
+
+
+def request_app_quit(screen: ModalScreen[object]) -> None:
+    action = getattr(screen.app, "action_quit_app", None)
+    if callable(action):
+        action()
 
 
 @dataclass(slots=True)
@@ -68,12 +183,9 @@ class ActionSpec:
 
 
 class ConfirmScreen(ModalScreen[bool]):
-    CSS = """
-    $app-surface: #ffffff;
-    $ui-ink: #1f2937;
-    $ui-accent-ink: #275a45;
-    $ui-border: #d9e7df;
-    $ui-border-active: #96b9a7;
+    CSS = _css(
+        THEME_CSS_TOKENS
+        + """
 
     ModalScreen {
         background: $app-surface;
@@ -97,10 +209,18 @@ class ConfirmScreen(ModalScreen[bool]):
 
     .dialog-title {
         width: 1fr;
+        height: auto;
         content-align: center middle;
+        text-align: center;
         text-style: bold;
         color: $ui-accent-ink;
         margin: 0 0 1 0;
+        padding: 0 1;
+    }
+
+    .dialog-message {
+        width: 1fr;
+        height: auto;
     }
 
     .dialog-actions {
@@ -110,13 +230,13 @@ class ConfirmScreen(ModalScreen[bool]):
     }
 
     .dialog-actions Button {
-        width: 16;
+        width: @@DIALOG_BUTTON_WIDTH@@;
         margin: 0 1;
     }
 
     Button {
         min-width: 9;
-        height: 3;
+        height: @@BUTTON_HEIGHT@@;
         padding: 0 2;
         content-align: center middle;
         text-style: bold;
@@ -130,71 +250,71 @@ class ConfirmScreen(ModalScreen[bool]):
     }
 
     .dialog-actions Button.-success:hover {
-        background: #eefaf2;
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
         color: $ui-ink;
-        border: round #6f9d86;
+        border: round @@BUTTON_FOCUS_BORDER@@;
     }
 
     .dialog-actions Button.-success:focus {
-        background: #f4fbf6;
+        background: @@BUTTON_DEFAULT_HOVER_BG@@;
         color: $ui-ink;
-        border: round #6f9d86;
+        border: round @@BUTTON_FOCUS_BORDER@@;
     }
 
     .dialog-actions Button.-success:hover:focus {
-        background: #eefaf2;
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
         color: $ui-ink;
-        border: round #6f9d86;
+        border: round @@BUTTON_FOCUS_BORDER@@;
     }
 
     .dialog-actions Button.-error {
         background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_BORDER@@;
         text-style: bold;
     }
 
     .dialog-actions Button.-error:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     .dialog-actions Button.-error:focus {
-        background: #e03131;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
         color: white;
-        border: round #c92a2a;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     .dialog-actions Button.-error:hover:focus {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     .dialog-actions Button.-warning {
         background: white;
-        color: #7c5c00;
-        border: round #e9c46a;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_BORDER@@;
         text-style: bold;
     }
 
     .dialog-actions Button.-warning:hover {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
     }
 
     .dialog-actions Button.-warning:focus {
-        background: #e9c46a;
-        color: #523d00;
-        border: round #c99a1d;
+        background: @@BUTTON_WARNING_BORDER@@;
+        color: @@BUTTON_WARNING_FOCUS_TEXT@@;
+        border: round @@BUTTON_WARNING_FOCUS_BORDER@@;
     }
 
     .dialog-actions Button.-warning:hover:focus {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
     }
 
     .dialog-message-center {
@@ -203,11 +323,12 @@ class ConfirmScreen(ModalScreen[bool]):
         text-align: center;
     }
     """
+    )
 
     def __init__(
         self,
         title: str,
-        message: str,
+        message: str | Text,
         confirm_label: str = "confirm",
         *,
         cancel_label: str = "cancel",
@@ -226,7 +347,8 @@ class ConfirmScreen(ModalScreen[bool]):
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.message_text, classes="dialog-message-center" if self.center_message else "")
+                message_classes = "dialog-message dialog-message-center" if self.center_message else "dialog-message"
+                yield Static(self.message_text, classes=message_classes)
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.cancel_label, id="cancel")
                     yield Button(self.confirm_label, id="confirm", variant=self.confirm_variant)
@@ -255,6 +377,7 @@ class TextInputScreen(ModalScreen[str | None]):
         password: bool = False,
         save_label: str = "save",
         cancel_label: str = "cancel",
+        submit_handler: Callable[[str], bool] | None = None,
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -263,6 +386,7 @@ class TextInputScreen(ModalScreen[str | None]):
         self.password = password
         self.save_label = save_label
         self.cancel_label = cancel_label
+        self.submit_handler = submit_handler
 
     def compose(self) -> ComposeResult:
         with Container(id="confirm-overlay"):
@@ -278,20 +402,26 @@ class TextInputScreen(ModalScreen[str | None]):
         if event.button.id == "cancel":
             self.dismiss(None)
             return
-        self.dismiss(self.query_one("#value", Input).value.strip())
+        self._submit_current_value()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "value":
-            self.dismiss(event.value.strip())
+            self._submit_current_value()
+
+    def _submit_current_value(self) -> None:
+        value = self.query_one("#value", Input).value.strip()
+        if self.submit_handler is not None and not self.submit_handler(value):
+            return
+        self.dismiss(value)
 
     def on_mount(self) -> None:
         self.query_one("#value", Input).focus()
 
 
 class SettingsScreen(ModalScreen[dict[str, str] | None]):
-    CSS = ConfirmScreen.CSS + """
+    CSS = _css(ConfirmScreen.CSS + """
     .field-label {
-        color: #52796f;
+        color: @@UI_ACCENT_INK@@;
         margin-top: 1;
         margin-bottom: 0;
     }
@@ -299,15 +429,15 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
     Input {
         margin-top: 0;
         margin-bottom: 1;
-        background: #ffffff;
-        color: #081c15;
-        border: round #b7e4c7;
+        background: @@APP_SURFACE@@;
+        color: @@FOCUS_INK@@;
+        border: round @@INPUT_BORDER@@;
     }
 
     Input:focus {
-        border: round #74c69d;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
-    """
+    """)
 
     def __init__(
         self,
@@ -370,7 +500,7 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
 
 
 class MenuModalScreen(ModalScreen[str | None]):
-    CSS = ConfirmScreen.CSS + """
+    CSS = _css(ConfirmScreen.CSS + """
     #confirm-dialog {
         width: 56;
         max-width: 68;
@@ -388,11 +518,11 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     .menu-button {
-        width: 28;
+        width: @@MENU_BUTTON_WIDTH@@;
         margin-bottom: 1;
         background: white;
-        color: #081c15;
-        border: round #95d5b2;
+        color: @@FOCUS_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
 
     ActionMenuScreen.-compact-menu .menu-button,
@@ -401,139 +531,242 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     Button.menu-button:hover {
-        background: #f4fbf6;
-        color: #081c15;
-        border: round #74c69d;
+        background: @@BUTTON_DEFAULT_HOVER_BG@@;
+        color: @@FOCUS_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
         text-style: bold;
     }
 
     Button.menu-button:focus {
-        background: #74c69d;
+        background: @@UI_BORDER_ACTIVE@@;
         color: white;
-        border: round #40916c;
+        border: round @@UI_ACCENT_INK@@;
         text-style: bold;
     }
 
     Button.menu-button:hover:focus {
-        background: #f4fbf6;
-        color: #081c15;
-        border: round #74c69d;
+        background: @@BUTTON_DEFAULT_HOVER_BG@@;
+        color: @@FOCUS_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
         text-style: bold;
     }
 
     Button.menu-button.-success {
         background: white;
-        color: #1b4332;
-        border: round #74c69d;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+    }
+
+    Button.menu-button.menu-variant-success {
+        background: white;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
 
     Button.menu-button.-success:hover {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+    }
+
+    Button.menu-button.menu-variant-success:hover {
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
 
     Button.menu-button.-success:focus {
-        background: #74c69d;
-        color: white;
-        border: round #40916c;
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+    }
+
+    Button.menu-button.menu-variant-success:focus {
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
 
     Button.menu-button.-success:hover:focus {
-        background: #eefaf2;
-        color: #1b4332;
-        border: round #52b788;
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+    }
+
+    Button.menu-button.menu-variant-success:hover:focus {
+        background: @@BUTTON_SUCCESS_HOVER_BG@@;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
     }
 
     Button.menu-button.-error {
         background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-error {
+        background: white;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_BORDER@@;
     }
 
     Button.menu-button.-error:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-error:hover {
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     Button.menu-button.-error:focus {
-        background: #e03131;
-        color: white;
-        border: round #c92a2a;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-error:focus {
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     Button.menu-button.-error:hover:focus {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-error:hover:focus {
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     Button.menu-button.-warning {
         background: white;
-        color: #7c5c00;
-        border: round #e9c46a;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-warning {
+        background: white;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_BORDER@@;
     }
 
     Button.menu-button.-warning:hover {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-warning:hover {
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
     }
 
     Button.menu-button.-warning:focus {
-        background: #e9c46a;
-        color: #523d00;
-        border: round #c99a1d;
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-warning:focus {
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
     }
 
     Button.menu-button.-warning:hover:focus {
-        background: #fff9db;
-        color: #7c5c00;
-        border: round #e0b84d;
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
+    }
+
+    Button.menu-button.menu-variant-warning:hover:focus {
+        background: @@BUTTON_WARNING_BG@@;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_HOVER_BORDER@@;
     }
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus,
     ServiceMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
         background: white;
-        color: #10231d;
-        border: round #95d5b2;
+        color: @@FOCUS_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+        text-style: bold;
+    }
+
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-success:focus,
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-success:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-success:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-success:focus {
+        background: white;
+        color: @@UI_ACCENT_INK@@;
+        border: round @@UI_BORDER_ACTIVE@@;
+        text-style: bold;
+    }
+
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-warning:focus,
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-warning:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-warning:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-warning:focus {
+        background: white;
+        color: @@BUTTON_WARNING_TEXT@@;
+        border: round @@BUTTON_WARNING_BORDER@@;
+        text-style: bold;
+    }
+
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-error:focus,
+    ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-error:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-error:focus,
+    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-error:focus {
+        background: white;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_BORDER@@;
         text-style: bold;
     }
 
     ActionMenuScreen.-suppress-initial-highlight Button.dialog-close:focus,
     ServiceMenuScreen.-suppress-initial-highlight Button.dialog-close:focus {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
+        background: @@VIEWER_CLOSE_BG@@;
+        color: @@VIEWER_FG@@;
+        border: round @@VIEWER_CLOSE_BG@@;
     }
 
     Button.dialog-close {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
+        background: @@VIEWER_CLOSE_BG@@;
+        color: @@VIEWER_FG@@;
+        border: round @@VIEWER_CLOSE_BG@@;
         text-style: bold;
     }
 
     Button.dialog-close:hover {
-        background: #2b2b2b;
-        border: round #2b2b2b;
+        background: @@VIEWER_CLOSE_BG_HOVER@@;
+        border: round @@VIEWER_CLOSE_BG_HOVER@@;
         color: white;
     }
 
     Button.dialog-close:focus {
-        background: #1f1f1f;
+        background: @@VIEWER_CLOSE_BG@@;
         color: white;
-        border: round #5a5a5a;
+        border: round @@VIEWER_CLOSE_BORDER_FOCUS@@;
     }
-    """
+    """)
 
     BINDINGS = [
         ("up", "focus_prev", "Previous"),
         ("down", "focus_next", "Next"),
         ("tab", "focus_next", "Next"),
         ("shift+tab", "focus_prev", "Previous"),
-        ("escape", "dismiss_none", "Close"),
+        ("escape", "request_quit", "Quit"),
+        ("q", "request_quit", "Quit"),
     ]
 
     def __init__(
@@ -543,6 +776,7 @@ class MenuModalScreen(ModalScreen[str | None]):
         auto_focus_first: bool = False,
         close_label: str = "close",
         *,
+        action_handler: Callable[[str], bool] | None = None,
         compact: bool = False,
     ) -> None:
         super().__init__()
@@ -550,6 +784,7 @@ class MenuModalScreen(ModalScreen[str | None]):
         self.actions = actions
         self.auto_focus_first = auto_focus_first
         self.close_label = close_label
+        self.action_handler = action_handler
         if compact:
             self.add_class("-compact-menu")
 
@@ -559,7 +794,12 @@ class MenuModalScreen(ModalScreen[str | None]):
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
                 with Vertical(classes="menu-actions"):
                     for action in self.actions:
-                        yield Button(action.label, id=f"menu-{action.key}", variant=action.variant, classes="menu-button")
+                        yield Button(
+                            action.label,
+                            id=f"menu-{action.key}",
+                            variant="default",
+                            classes=self._button_classes(action),
+                        )
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.close_label, id="cancel", classes="dialog-close")
 
@@ -569,10 +809,49 @@ class MenuModalScreen(ModalScreen[str | None]):
         if button_id == "cancel":
             self.dismiss(None)
             return
-        self.handle_menu_action(button_id.removeprefix("menu-"))
+        buttons = self._menu_buttons()
+        if event.button not in buttons:
+            return
+        index = buttons.index(event.button)
+        if 0 <= index < len(self.actions):
+            self.handle_menu_action(self.actions[index].key)
 
     def handle_menu_action(self, action: str) -> None:
+        if self.action_handler is not None and self.action_handler(action):
+            return
         self.dismiss(action)
+
+    def update_actions(self, actions: list[ActionSpec]) -> None:
+        self.actions = actions
+        buttons = self._menu_buttons()
+        if len(buttons) != len(actions):
+            return
+        focused = self.focused
+        focus_index = buttons.index(focused) if focused in buttons else None
+        for button, action in zip(buttons, actions, strict=False):
+            button.label = action.label
+            button.variant = "default"
+            button.remove_class("menu-variant-success")
+            button.remove_class("menu-variant-warning")
+            button.remove_class("menu-variant-error")
+            variant_class = self._variant_class_name(action.variant)
+            if variant_class is not None:
+                button.add_class(variant_class)
+        if focus_index is not None and 0 <= focus_index < len(buttons):
+            buttons[focus_index].focus()
+
+    @staticmethod
+    def _variant_class_name(variant: str) -> str | None:
+        if variant in {"success", "warning", "error"}:
+            return f"menu-variant-{variant}"
+        return None
+
+    def _button_classes(self, action: ActionSpec) -> str:
+        classes = ["menu-button"]
+        variant_class = self._variant_class_name(action.variant)
+        if variant_class is not None:
+            classes.append(variant_class)
+        return " ".join(classes)
 
     def _menu_buttons(self) -> list[Button]:
         return [widget for widget in self.query(".menu-button") if isinstance(widget, Button)]
@@ -609,8 +888,30 @@ class MenuModalScreen(ModalScreen[str | None]):
     def action_dismiss_none(self) -> None:
         self.dismiss(None)
 
+    def action_request_quit(self) -> None:
+        request_app_quit(self)
+
     def _clear_initial_focus(self) -> None:
         self.set_focus(None)
+
+    def _suspend_focus(self) -> None:
+        self.add_class("-suppress-initial-highlight")
+        self.set_focus(None)
+        self.call_after_refresh(self._clear_initial_focus)
+
+    def reset_interaction_state(self) -> None:
+        self._suspend_focus()
+
+    def _resume_button_highlight(self) -> None:
+        self.remove_class("-suppress-initial-highlight")
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        if isinstance(event.widget, Button):
+            self._resume_button_highlight()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if isinstance(event.widget, Button):
+            self._resume_button_highlight()
 
     def on_mount(self) -> None:
         if self.auto_focus_first:
@@ -624,6 +925,14 @@ class MenuModalScreen(ModalScreen[str | None]):
 
 class ActionMenuScreen(MenuModalScreen):
     pass
+
+
+class UserConfigureMenuScreen(ActionMenuScreen):
+    def handle_menu_action(self, action: str) -> None:
+        if self.action_handler is not None and self.action_handler(action):
+            self._suspend_focus()
+            return
+        self.dismiss(action)
 
 
 class ServiceMenuScreen(MenuModalScreen):
@@ -664,8 +973,9 @@ class ServiceMenuScreen(MenuModalScreen):
 
 
 class FullscreenTextScreen(ModalScreen[str | None]):
-    CSS = """
-    $app-surface: #ffffff;
+    CSS = _css(
+        THEME_CSS_TOKENS
+        + """
 
     ModalScreen {
         background: $app-surface;
@@ -682,38 +992,38 @@ class FullscreenTextScreen(ModalScreen[str | None]):
         height: 1fr;
         margin: 1 2;
         background: $app-surface;
-        border: round #74c69d;
+        border: round @@UI_BORDER_ACTIVE@@;
         padding: 1 2;
     }
 
     #viewer-title {
         width: 1fr;
         content-align: center middle;
-        color: #2d6a4f;
+        color: @@UI_ACCENT_INK@@;
         text-style: bold;
         margin-bottom: 1;
     }
 
     #viewer-scroll {
         height: 1fr;
-        background: #111315;
-        color: #f5f7f6;
-        border: round #2d3b34;
+        background: @@VIEWER_BG@@;
+        color: @@VIEWER_FG@@;
+        border: round @@VIEWER_BORDER@@;
         padding: 0 1;
         margin-bottom: 1;
-        scrollbar-color: #8fd3ac;
-        scrollbar-color-hover: #74c69d;
-        scrollbar-color-active: #2d6a4f;
-        scrollbar-background: #151b18;
-        scrollbar-background-hover: #1d2521;
-        scrollbar-background-active: #243029;
-        scrollbar-size-vertical: 1;
-        scrollbar-size-horizontal: 1;
+        scrollbar-color: $scrollbar-color;
+        scrollbar-color-hover: $scrollbar-color-hover;
+        scrollbar-color-active: $scrollbar-color-active;
+        scrollbar-background: @@VIEWER_SCROLLBAR_BG@@;
+        scrollbar-background-hover: @@VIEWER_SCROLLBAR_BG_HOVER@@;
+        scrollbar-background-active: @@VIEWER_SCROLLBAR_BG_ACTIVE@@;
+        scrollbar-size-vertical: @@SCROLLBAR_SIZE@@;
+        scrollbar-size-horizontal: @@SCROLLBAR_SIZE@@;
     }
 
     #viewer-body {
-        color: #f5f7f6;
-        background: #111315;
+        color: @@VIEWER_FG@@;
+        background: @@VIEWER_BG@@;
     }
 
     #viewer-actions {
@@ -741,52 +1051,53 @@ class FullscreenTextScreen(ModalScreen[str | None]):
     }
 
     #viewer-actions Button {
-        width: 18;
+        width: @@VIEWER_ACTION_BUTTON_WIDTH@@;
         margin: 0 1;
     }
 
     Button.viewer-danger-action {
         background: white;
-        color: #a61e4d;
-        border: round #f1aeb5;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_BORDER@@;
         text-style: bold;
     }
 
     Button.viewer-danger-action:hover {
-        background: #fff5f5;
-        color: #a61e4d;
-        border: round #e88997;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
+        color: @@BUTTON_DANGER_TEXT@@;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     Button.viewer-danger-action:focus {
-        background: #e03131;
+        background: @@BUTTON_DANGER_HOVER_BG@@;
         color: white;
-        border: round #c92a2a;
+        border: round @@BUTTON_DANGER_HOVER_BORDER@@;
     }
 
     Button.viewer-close {
-        background: #1f1f1f;
-        color: #f5f5f5;
-        border: round #1f1f1f;
+        background: @@VIEWER_CLOSE_BG@@;
+        color: @@VIEWER_FG@@;
+        border: round @@VIEWER_CLOSE_BG@@;
         text-style: bold;
     }
 
     Button.viewer-close:hover {
-        background: #2b2b2b;
+        background: @@VIEWER_CLOSE_BG_HOVER@@;
         color: white;
-        border: round #2b2b2b;
+        border: round @@VIEWER_CLOSE_BG_HOVER@@;
     }
 
     Button.viewer-close:focus {
-        background: #1f1f1f;
+        background: @@VIEWER_CLOSE_BG@@;
         color: white;
-        border: round #5a5a5a;
+        border: round @@VIEWER_CLOSE_BORDER_FOCUS@@;
     }
     """
+    )
 
     BINDINGS = [
-        ("escape", "close_viewer", "Close"),
-        ("q", "close_viewer", "Close"),
+        ("escape", "request_quit", "Quit"),
+        ("q", "request_quit", "Quit"),
         ("up", "scroll_up", "Up"),
         ("down", "scroll_down", "Down"),
         ("pageup", "page_up", "PageUp"),
@@ -848,6 +1159,9 @@ class FullscreenTextScreen(ModalScreen[str | None]):
     def action_close_viewer(self) -> None:
         self._close_viewer()
 
+    def action_request_quit(self) -> None:
+        request_app_quit(self)
+
     def _close_viewer(self) -> None:
         if self._close_started:
             return
@@ -881,3 +1195,763 @@ class FullscreenTextScreen(ModalScreen[str | None]):
 
     def action_scroll_end(self) -> None:
         self.query_one("#viewer-scroll", VerticalScroll).action_scroll_end()
+
+
+class InlineCopyAction(Static):
+    can_focus = False
+
+    def __init__(self, widget_id: str) -> None:
+        super().__init__("", id=widget_id, classes="user-secrets-link-copy")
+
+    async def _on_click(self, event: events.Click) -> None:
+        event.stop()
+        if self.has_class("-disabled"):
+            return
+        handler = getattr(self.screen, "copy_secret_link", None)
+        if callable(handler):
+            handler(self.id or "")
+
+
+class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
+    MIN_LIST_WIDTH = 20
+    MIN_DETAIL_WIDTH = 28
+
+    CSS = _css(
+        THEME_CSS_TOKENS
+        + """
+
+    ModalScreen {
+        background: $app-surface;
+    }
+
+    #user-secrets-overlay {
+        width: 1fr;
+        height: 1fr;
+        align: center middle;
+    }
+
+    #user-secrets-dialog {
+        width: 1fr;
+        height: 1fr;
+        margin: 1 2;
+        background: $app-surface;
+        border: round @@UI_BORDER_ACTIVE@@;
+        padding: 1 2;
+    }
+
+    #user-secrets-header {
+        width: 1fr;
+        height: auto;
+        margin-bottom: 1;
+        content-align: center middle;
+    }
+
+    #user-secrets-title {
+        width: 1fr;
+        content-align: center middle;
+        text-align: center;
+        color: @@UI_ACCENT_INK@@;
+        text-style: bold;
+    }
+
+    #user-secrets-body {
+        height: 1fr;
+        margin-bottom: 1;
+    }
+
+    #user-secrets-list-column {
+        width: 26;
+        min-width: 20;
+        height: 1fr;
+    }
+
+    #user-secrets-detail-column {
+        width: 1fr;
+        height: 1fr;
+    }
+
+    #user-secrets-split-handle {
+        width: 1;
+        min-width: 1;
+        height: 1fr;
+        content-align: center middle;
+        color: @@SPLIT_HANDLE_COLOR@@;
+        background: transparent;
+        text-style: bold;
+        margin: 0;
+        padding: 0;
+    }
+
+    #user-secrets-split-handle:hover {
+        color: @@SPLIT_HANDLE_HOVER_COLOR@@;
+        background: @@SPLIT_HANDLE_HOVER_BG@@;
+    }
+
+    #user-secrets-split-handle:focus {
+        color: @@SPLIT_HANDLE_FOCUS_COLOR@@;
+        background: @@SPLIT_HANDLE_FOCUS_BG@@;
+    }
+
+    .user-secrets-panel {
+        height: 1fr;
+        layout: vertical;
+        background: $app-surface;
+        border: round $ui-border;
+        padding: 1 0 1 1;
+    }
+
+    .user-secrets-panel-title {
+        width: 1fr;
+        content-align: center middle;
+        color: @@UI_ACCENT_INK@@;
+        text-style: bold;
+        margin: 0 0 1 0;
+    }
+
+    #user-secrets-list,
+    #user-secrets-detail-scroll,
+    #user-secrets-list-empty,
+    #user-secrets-detail-empty {
+        height: 1fr;
+        background: $app-surface;
+        color: $ui-ink;
+        border: none;
+        scrollbar-color: $scrollbar-color;
+        scrollbar-color-hover: $scrollbar-color-hover;
+        scrollbar-color-active: $scrollbar-color-active;
+        scrollbar-background: $scrollbar-background;
+        scrollbar-background-hover: $scrollbar-background-hover;
+        scrollbar-background-active: $scrollbar-background-active;
+        scrollbar-size-vertical: @@SCROLLBAR_SIZE@@;
+        scrollbar-size-horizontal: @@SCROLLBAR_SIZE@@;
+    }
+
+    #user-secrets-list {
+        padding: 0 1 0 0;
+    }
+
+    #user-secrets-list .list-label {
+        width: 1fr;
+        content-align: center middle;
+        text-align: center;
+        text-style: bold;
+    }
+
+    #user-secrets-list > ListItem {
+        background: $app-surface;
+        border: round $ui-border;
+        color: $ui-ink;
+        height: auto;
+        min-height: 3;
+        padding: 0;
+        margin: 0 0 0 0;
+    }
+
+    #user-secrets-list > ListItem.-highlight,
+    #user-secrets-list:focus > ListItem.-highlight {
+        background: transparent;
+        color: $ui-ink;
+        border: round @@UI_BORDER_ACTIVE@@;
+        text-style: bold;
+    }
+
+    #user-secrets-list.-active-selection > ListItem.-highlight,
+    #user-secrets-list:focus > ListItem.-highlight {
+        background: @@ACCENT_LIGHT_BG@@;
+        color: $ui-ink;
+    }
+
+    #user-secrets-detail-scroll {
+        padding: 0;
+    }
+
+    #user-secrets-detail {
+        color: $ui-ink;
+        background: $app-surface;
+        width: 1fr;
+    }
+
+    .user-secrets-detail-section-title {
+        width: 1fr;
+        content-align: center middle;
+        text-align: center;
+        color: @@UI_ACCENT_INK@@;
+        text-style: bold;
+        margin: 0 0 1 0;
+    }
+
+    .user-secrets-detail-section-title.after-section {
+        margin: 1 0 1 0;
+    }
+
+    .user-secrets-detail-section-body {
+        width: 1fr;
+        color: $ui-ink;
+        background: $app-surface;
+        padding: 0 1 0 0;
+    }
+
+    #user-secrets-detail-links {
+        width: 1fr;
+        height: auto;
+        background: $app-surface;
+        padding: 0 1 0 0;
+        align: center top;
+    }
+
+    .user-secrets-link-row {
+        width: auto;
+        height: auto;
+        align: left middle;
+        margin: 0;
+    }
+
+    .user-secrets-link-label {
+        width: auto;
+        min-width: 0;
+        color: $ui-ink;
+        text-align: right;
+        content-align: right middle;
+    }
+
+    .user-secrets-link-copy {
+        width: auto;
+        min-width: 0;
+        max-width: 8;
+        height: auto;
+        padding: 0;
+        margin: 0 0 0 1;
+        background: transparent;
+        color: #229ED9;
+        border: none;
+        text-style: bold;
+        text-align: left;
+        content-align: center middle;
+    }
+
+    .user-secrets-link-copy:hover {
+        background: transparent;
+        color: #168AC0;
+        text-style: bold underline;
+    }
+
+    .user-secrets-link-copy:focus {
+        background: transparent;
+        color: #168AC0;
+        text-style: bold underline;
+    }
+
+    .user-secrets-link-copy.-disabled {
+        color: @@CONTENT_SUBTLE_TEXT@@;
+        text-style: none;
+    }
+
+    #user-secrets-list-empty,
+    #user-secrets-detail-empty {
+        display: none;
+        padding: 0 4;
+        color: @@CONTENT_SUBTLE_TEXT@@;
+        content-align: center middle;
+        text-align: center;
+    }
+
+    #user-secrets-actions {
+        width: 1fr;
+        height: auto;
+        align: center middle;
+    }
+
+    #user-secrets-actions-left {
+        width: auto;
+        height: auto;
+        align: center middle;
+    }
+
+    #user-secrets-actions-left Button {
+        width: @@VIEWER_ACTION_BUTTON_WIDTH@@;
+        margin: 0 1;
+    }
+
+    #user-secrets-actions-left #user-secrets-close-action {
+        width: 5;
+        min-width: 5;
+        max-width: 5;
+        height: 3;
+        background: white;
+        color: $ui-ink;
+        border: round $ui-border-active;
+        padding: 0;
+        margin: 0 1 0 0;
+        text-style: bold;
+        text-align: center;
+        content-align: center middle;
+    }
+
+    #user-secrets-actions-left #user-secrets-close-action:hover {
+        background: @@BUTTON_DEFAULT_HOVER_BG@@;
+        border: round @@BUTTON_FOCUS_BORDER@@;
+    }
+
+    #user-secrets-actions-left #user-secrets-close-action:focus {
+        background: white;
+        border: round @@BUTTON_FOCUS_BORDER@@;
+    }
+    """
+    )
+
+    BINDINGS = [
+        ("escape", "request_quit", "Quit"),
+        ("q", "request_quit", "Quit"),
+    ]
+
+    def __init__(
+        self,
+        title: str,
+        secrets: list[tuple[int, str]],
+        *,
+        selected_secret_id: int | None,
+        detail_provider: Callable[[int | None], tuple[str, str, list[tuple[str, str | None, str | None]]]],
+        actions: list[ActionSpec],
+        action_handler: Callable[[str, int | None], bool] | None = None,
+        secret_enabled_states: dict[int, bool],
+        list_title: str,
+        detail_title: str,
+        credentials_title: str,
+        links_title: str,
+        enable_label: str = "Enable",
+        disable_label: str = "Disable",
+        close_label: str = "close",
+        empty_list_message: str = "",
+        empty_detail_message: str = "",
+        empty_detail_no_secrets_message: str = "",
+        split_hint: str = "",
+        no_selection_message: str = "",
+    ) -> None:
+        super().__init__()
+        self.title_text = title
+        self.secrets = secrets
+        self.selected_secret_id = selected_secret_id
+        self.detail_provider = detail_provider
+        self.actions = actions
+        self.action_handler = action_handler
+        self.secret_enabled_states = secret_enabled_states
+        self.list_title = list_title
+        self.detail_title = detail_title
+        self.credentials_title = credentials_title
+        self.links_title = links_title
+        self.enable_label = enable_label
+        self.disable_label = disable_label
+        self.close_label = close_label
+        self.empty_list_message = empty_list_message
+        self.empty_detail_message = empty_detail_message
+        self.empty_detail_no_secrets_message = empty_detail_no_secrets_message
+        self.split_hint = split_hint
+        self.no_selection_message = no_selection_message
+        self._split_ratio = 0.28
+        self._list_active = False
+        self._link_targets: dict[str, str] = {}
+
+    def compose(self) -> ComposeResult:
+        actions_by_key = {action.key: action for action in self.actions}
+        with Container(id="user-secrets-overlay"):
+            with Container(id="user-secrets-dialog"):
+                with Vertical(id="user-secrets-header"):
+                    yield Static(format_window_title(self.title_text), id="user-secrets-title")
+                with Horizontal(id="user-secrets-body"):
+                    with Vertical(id="user-secrets-list-column"):
+                        with Vertical(classes="user-secrets-panel"):
+                            yield Static(self.list_title, classes="user-secrets-panel-title")
+                            yield Static(self.empty_list_message, id="user-secrets-list-empty")
+                            with ListView(id="user-secrets-list", initial_index=None):
+                                for secret_id, label in self.secrets:
+                                    yield ValueListItem(secret_id, label)
+                    yield UserSecretsSplitHandle()
+                    with Vertical(id="user-secrets-detail-column"):
+                        with Vertical(classes="user-secrets-panel"):
+                            yield Static(self.empty_detail_message, id="user-secrets-detail-empty")
+                            with VerticalScroll(id="user-secrets-detail-scroll"):
+                                yield Static(self.detail_title, classes="user-secrets-detail-section-title")
+                                yield Static("", id="user-secrets-detail-overview", classes="user-secrets-detail-section-body")
+                                yield Static(self.credentials_title, classes="user-secrets-detail-section-title after-section")
+                                yield Static("", id="user-secrets-detail-credentials", classes="user-secrets-detail-section-body")
+                                yield Static(self.links_title, classes="user-secrets-detail-section-title after-section")
+                                with Vertical(id="user-secrets-detail-links"):
+                                    for index in range(3):
+                                        with Horizontal(classes="user-secrets-link-row"):
+                                            yield Static("", id=f"user-secrets-link-label-{index}", classes="user-secrets-link-label")
+                                            yield InlineCopyAction(widget_id=f"user-secrets-link-copy-tg-{index}")
+                                            yield InlineCopyAction(widget_id=f"user-secrets-link-copy-tme-{index}")
+                with Horizontal(id="user-secrets-actions"):
+                    with Horizontal(id="user-secrets-actions-left"):
+                        add_action = actions_by_key.get("add_secret")
+                        if add_action is not None:
+                            yield Button(
+                                add_action.label,
+                                id=f"user-secrets-action-{add_action.key}",
+                                variant=add_action.variant,
+                                classes=add_action.classes,
+                            )
+                        rotate_action = actions_by_key.get("rotate_secret")
+                        if rotate_action is not None:
+                            rotate_button = Button(
+                                rotate_action.label,
+                                id=f"user-secrets-action-{rotate_action.key}",
+                                variant=rotate_action.variant,
+                                classes=rotate_action.classes,
+                            )
+                            rotate_button.display = False
+                            yield rotate_button
+                        toggle_button = Button(
+                            self.enable_label,
+                            id="user-secrets-toggle-action",
+                            variant="success",
+                        )
+                        toggle_button.display = False
+                        yield toggle_button
+                        delete_action = actions_by_key.get("delete_secret")
+                        if delete_action is not None:
+                            delete_button = Button(
+                                delete_action.label,
+                                id=f"user-secrets-action-{delete_action.key}",
+                                variant=delete_action.variant,
+                                classes=delete_action.classes,
+                            )
+                            delete_button.display = False
+                            yield delete_button
+                        yield Button("✖", id="user-secrets-close-action")
+
+    def on_mount(self) -> None:
+        secret_ids = [secret_id for secret_id, _ in self.secrets]
+        self.query_one("#user-secrets-close-action", Button).tooltip = self.close_label
+        self.query_one("#user-secrets-split-handle", UserSecretsSplitHandle).tooltip = self.split_hint
+        list_view = self.query_one("#user-secrets-list", ListView)
+        self._update_list_state()
+        if secret_ids:
+            if self.selected_secret_id not in secret_ids:
+                self.selected_secret_id = secret_ids[0]
+            list_view.index = None
+            self._list_active = False
+            self.set_focus(None)
+        else:
+            self.selected_secret_id = None
+            list_view.index = None
+            self._list_active = False
+            self.set_focus(None)
+        self._update_detail()
+        self.call_after_refresh(self._apply_split)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._apply_split()
+
+    def _apply_split(self) -> None:
+        body = self.query_one("#user-secrets-body", Horizontal)
+        list_column = self.query_one("#user-secrets-list-column", Vertical)
+        handle = self.query_one("#user-secrets-split-handle", UserSecretsSplitHandle)
+        total_width = body.size.width or body.content_region.width or max(0, self.size.width - 8)
+        if total_width <= 0:
+            return
+        handle_width = 1
+        min_list = self.MIN_LIST_WIDTH
+        min_detail = self.MIN_DETAIL_WIDTH
+        max_list = max(min_list, total_width - min_detail - handle_width)
+        list_width = max(min_list, min(int(total_width * self._split_ratio), max_list))
+        list_column.styles.width = list_width
+        handle.display = total_width > (min_list + min_detail + handle_width)
+
+    def set_user_secrets_split_from_screen_x(self, screen_x: int) -> None:
+        body = self.query_one("#user-secrets-body", Horizontal)
+        total_width = body.size.width or body.content_region.width
+        if total_width <= 0:
+            return
+        left = body.region.x
+        offset = max(0, min(total_width, screen_x - left))
+        self._split_ratio = offset / total_width
+        self._apply_split()
+
+    def _update_list_state(self) -> None:
+        list_view = self.query_one("#user-secrets-list", ListView)
+        empty_state = self.query_one("#user-secrets-list-empty", Static)
+        has_secrets = bool(self.secrets)
+        list_view.display = has_secrets
+        empty_state.display = not has_secrets
+        self._update_list_visual_state()
+
+    def _update_list_visual_state(self) -> None:
+        list_view = self.query_one("#user-secrets-list", ListView)
+        if self._list_active and self.selected_secret_id is not None:
+            list_view.add_class("-active-selection")
+            return
+        list_view.remove_class("-active-selection")
+
+    def _update_detail(self) -> None:
+        detail_empty = self.query_one("#user-secrets-detail-empty", Static)
+        detail_scroll = self.query_one("#user-secrets-detail-scroll", VerticalScroll)
+        if self.selected_secret_id is None or not self._list_active:
+            detail_empty.update(self.empty_detail_no_secrets_message if not self.secrets else self.empty_detail_message)
+            detail_empty.display = True
+            detail_scroll.display = False
+            self._clear_links()
+            self._update_action_buttons()
+            return
+        detail_empty.display = False
+        detail_scroll.display = True
+        overview, credentials, links = self.detail_provider(self.selected_secret_id)
+        self.query_one("#user-secrets-detail-overview", Static).update(render_fields(overview, align_fields=True))
+        self.query_one("#user-secrets-detail-credentials", Static).update(render_fields(credentials, align_fields=True))
+        self._update_links(links)
+        detail_scroll.scroll_home(animate=False, immediate=True, x_axis=False)
+        self._update_action_buttons()
+
+    def _clear_links(self) -> None:
+        self._link_targets.clear()
+        for index in range(3):
+            label = self.query_one(f"#user-secrets-link-label-{index}", Static)
+            tg_button = self.query_one(f"#user-secrets-link-copy-tg-{index}", InlineCopyAction)
+            tme_button = self.query_one(f"#user-secrets-link-copy-tme-{index}", InlineCopyAction)
+            label.update("")
+            tg_button.update(Text(""))
+            tme_button.update(Text(""))
+            tg_button.add_class("-disabled")
+            tme_button.add_class("-disabled")
+
+    def _update_links(self, links: list[tuple[str, str | None, str | None]]) -> None:
+        self._link_targets.clear()
+        label_width = max((cell_len(link_label) for link_label, _, _ in links), default=0) + 2
+        for index in range(3):
+            label = self.query_one(f"#user-secrets-link-label-{index}", Static)
+            tg_button = self.query_one(f"#user-secrets-link-copy-tg-{index}", InlineCopyAction)
+            tme_button = self.query_one(f"#user-secrets-link-copy-tme-{index}", InlineCopyAction)
+            label.styles.width = label_width if label_width > 0 else "auto"
+            if index >= len(links):
+                label.update("")
+                tg_button.update(Text(""))
+                tme_button.update(Text(""))
+                tg_button.add_class("-disabled")
+                tme_button.add_class("-disabled")
+                continue
+            link_label, tg_link, tme_link = links[index]
+            label.update(f"{link_label} :")
+            tg_button.update(Text("[tg]"))
+            tme_button.update(Text("[t.me]"))
+            if tg_link:
+                tg_button.remove_class("-disabled")
+                self._link_targets[tg_button.id or ""] = tg_link
+            else:
+                tg_button.add_class("-disabled")
+            if tme_link:
+                tme_button.remove_class("-disabled")
+                self._link_targets[tme_button.id or ""] = tme_link
+            else:
+                tme_button.add_class("-disabled")
+
+    def _update_action_buttons(self) -> None:
+        rotate_button = self.query_one("#user-secrets-action-rotate_secret", Button)
+        delete_button = self.query_one("#user-secrets-action-delete_secret", Button)
+        toggle_button = self.query_one("#user-secrets-toggle-action", Button)
+        secret_enabled = self._selected_secret_enabled()
+        has_selected_secret = secret_enabled is not None
+        rotate_button.display = has_selected_secret
+        delete_button.display = has_selected_secret
+        if secret_enabled is None:
+            toggle_button.display = False
+            return
+        toggle_button.display = True
+        toggle_button.label = self.disable_label if secret_enabled else self.enable_label
+        toggle_button.variant = "error" if secret_enabled else "success"
+
+    @property
+    def list_active(self) -> bool:
+        return self._list_active
+
+    async def refresh_content(
+        self,
+        *,
+        secrets: list[tuple[int, str]],
+        secret_enabled_states: dict[int, bool],
+        selected_secret_id: int | None,
+        list_active: bool,
+    ) -> None:
+        list_changed = secrets != self.secrets
+        self.secrets = secrets
+        self.secret_enabled_states = secret_enabled_states
+        secret_ids = [secret_id for secret_id, _ in secrets]
+        if selected_secret_id not in secret_ids:
+            selected_secret_id = secret_ids[0] if secret_ids else None
+        self.selected_secret_id = selected_secret_id
+        self._list_active = list_active and self.selected_secret_id is not None
+
+        list_view = self.query_one("#user-secrets-list", ListView)
+        if list_changed:
+            items = [ValueListItem(secret_id, label) for secret_id, label in secrets]
+            try:
+                await list_view.clear()
+                if items:
+                    await list_view.extend(items)
+            except MountError:
+                return
+
+        if self._list_active and self.selected_secret_id in secret_ids:
+            list_view.index = secret_ids.index(self.selected_secret_id)
+        else:
+            list_view.index = None
+
+        self._update_list_state()
+        self._update_detail()
+
+    def _selected_secret_enabled(self) -> bool | None:
+        if self.selected_secret_id is None or not self._list_active:
+            return None
+        return self.secret_enabled_states.get(self.selected_secret_id)
+
+    def _set_selected_secret(self, secret_id: int | None) -> None:
+        if self.selected_secret_id == secret_id:
+            return
+        self.selected_secret_id = secret_id
+        self._update_detail()
+
+    def _set_list_active(self, active: bool) -> None:
+        active = active and bool(self.secrets)
+        if self._list_active == active and (active or not self.secrets):
+            return
+        self._list_active = active
+        list_view = self.query_one("#user-secrets-list", ListView)
+        if self._list_active:
+            secret_ids = [secret_id for secret_id, _ in self.secrets]
+            if self.selected_secret_id in secret_ids:
+                list_view.index = secret_ids.index(self.selected_secret_id)
+        else:
+            list_view.index = None
+        self._update_list_visual_state()
+        self._update_detail()
+
+    def _clear_transient_focus(self) -> None:
+        self.set_focus(None)
+
+    def _release_action_focus(self) -> None:
+        self.set_focus(None)
+        self.call_after_refresh(self._clear_transient_focus)
+
+    def copy_secret_link(self, action_id: str) -> None:
+        link_value = self._link_targets.get(action_id)
+        copy_text = getattr(self.app, "_copy_text", None)
+        translate = getattr(self.app, "_t", None)
+        if link_value and callable(copy_text):
+            copy_text(link_value)
+            copied_message = translate("copied_to_clipboard", "Copied to clipboard.") if callable(translate) else "Copied to clipboard."
+            self.app.notify(copied_message, severity="information")
+        self._release_action_focus()
+
+    @staticmethod
+    def _is_within(widget: object, ancestor: object) -> bool:
+        current = widget
+        while current is not None:
+            if current is ancestor:
+                return True
+            current = getattr(current, "parent", None)
+        return False
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.id != "user-secrets-list":
+            return
+        item = event.item
+        if isinstance(item, ValueListItem):
+            secret_id = int(item.value)
+            if self._list_active and self.selected_secret_id == secret_id:
+                self._set_list_active(False)
+                self.set_focus(None)
+                return
+            self.selected_secret_id = secret_id
+            self._set_list_active(True)
+            self._update_detail()
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        return
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        return
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id == "user-secrets-close-action":
+            self.dismiss(("close", self.selected_secret_id))
+            return
+        if button_id == "user-secrets-toggle-action":
+            if self.selected_secret_id is None or not self._list_active:
+                if self.no_selection_message:
+                    self.app.notify(self.no_selection_message, severity="warning")
+                self._release_action_focus()
+                return
+            secret_enabled = self.secret_enabled_states.get(self.selected_secret_id)
+            action = "disable_secret" if secret_enabled else "enable_secret"
+            if self.action_handler is not None and self.action_handler(action, self.selected_secret_id):
+                self._release_action_focus()
+                return
+            self.dismiss((action, self.selected_secret_id))
+            return
+        if not button_id.startswith("user-secrets-action-"):
+            return
+        action = button_id.removeprefix("user-secrets-action-")
+        if self.action_handler is not None and self.action_handler(action, self.selected_secret_id):
+            self._release_action_focus()
+            return
+        if action != "add_secret" and (self.selected_secret_id is None or not self._list_active):
+            if self.no_selection_message:
+                self.app.notify(self.no_selection_message, severity="warning")
+            self._release_action_focus()
+            return
+        self.dismiss((action, self.selected_secret_id))
+
+    def action_close_dialog(self) -> None:
+        self.dismiss(("close", self.selected_secret_id))
+
+    def action_request_quit(self) -> None:
+        request_app_quit(self)
+
+
+class UserSecretsSplitHandle(Static):
+    can_focus = False
+
+    def __init__(self) -> None:
+        super().__init__("│", id="user-secrets-split-handle")
+        self._dragging = False
+
+    async def _on_mouse_down(self, event: events.MouseDown) -> None:
+        self._dragging = True
+        self.capture_mouse()
+        event.stop()
+        if hasattr(self.screen, "set_user_secrets_split_from_screen_x"):
+            self.screen.set_user_secrets_split_from_screen_x(int(event.screen_x))
+
+    async def _on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._dragging and hasattr(self.screen, "set_user_secrets_split_from_screen_x"):
+            self.screen.set_user_secrets_split_from_screen_x(int(event.screen_x))
+            event.stop()
+
+    async def _on_mouse_up(self, event: events.MouseUp) -> None:
+        if self._dragging:
+            self._dragging = False
+            self.release_mouse()
+            self.screen.set_focus(None)
+            event.stop()
+
+
+class ModalHeaderClose(Container):
+    can_focus = True
+
+    def compose(self) -> ComposeResult:
+        yield Static("×", id="user-secrets-close-glyph")
+
+    async def _on_mouse_down(self, event: events.MouseDown) -> None:
+        self.focus()
+        event.stop()
+
+    async def _on_click(self, event: events.Click) -> None:
+        event.stop()
+        if hasattr(self.screen, "action_close_dialog"):
+            self.screen.action_close_dialog()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key in {"enter", "space"}:
+            event.stop()
+            if hasattr(self.screen, "action_close_dialog"):
+                self.screen.action_close_dialog()

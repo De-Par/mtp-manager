@@ -10,14 +10,21 @@ from rich.cells import cell_len
 from rich.text import Text
 
 from controller import DashboardViewModel
+from ui.theme import UI_ACCENT_INK, UI_INK, USAGE_CAUTION, USAGE_DANGER, USAGE_OK, USAGE_WARNING
 
 StatusTranslateFn = Callable[[str], str]
-BASE_TEXT_STYLE = "#1f2937"
-TITLE_TEXT_STYLE = "bold #275a45"
+BASE_TEXT_STYLE = UI_INK
+TITLE_TEXT_STYLE = f"bold {UI_ACCENT_INK}"
 
 
-def render_fields(body: str) -> Text:
+def render_fields(body: str, *, align_fields: bool = False) -> Text:
     """Render simple field-style text blocks used outside the dashboard card"""
+    label_width = 0
+    if align_fields:
+        label_width = max(
+            (cell_len(raw_line.split(": ", 1)[0].rstrip()) for raw_line in body.splitlines() if ": " in raw_line),
+            default=0,
+        )
     text = Text()
     for raw_line in body.splitlines():
         line = raw_line.rstrip()
@@ -26,7 +33,11 @@ def render_fields(body: str) -> Text:
             continue
         if ": " in line:
             label, value = line.split(": ", 1)
-            text.append(f"{label}: ", style=BASE_TEXT_STYLE)
+            if align_fields and label_width > 0:
+                text.append(_pad_to_cell_width(label, label_width), style=BASE_TEXT_STYLE)
+                text.append(" : ", style=BASE_TEXT_STYLE)
+            else:
+                text.append(f"{label}: ", style=BASE_TEXT_STYLE)
             text.append(value, style=BASE_TEXT_STYLE)
         elif line.startswith("- "):
             text.append(line, style=BASE_TEXT_STYLE)
@@ -55,12 +66,12 @@ def _pad_to_cell_width(value: str, width: int) -> str:
 
 def _usage_percent_style(percent: float) -> str:
     if percent >= 90:
-        return "bold #e03131"
+        return f"bold {USAGE_DANGER}"
     if percent >= 75:
-        return "bold #f76707"
+        return f"bold {USAGE_WARNING}"
     if percent >= 50:
-        return "bold #ffd43b"
-    return "bold #37b24d"
+        return f"bold {USAGE_CAUTION}"
+    return f"bold {USAGE_OK}"
 
 
 def _usage_metric_text(used: int, total: int) -> Text:

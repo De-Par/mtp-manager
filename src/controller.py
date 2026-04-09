@@ -208,15 +208,33 @@ class AppController:
         except AppError:
             return None
 
+    def _secret_ordinal(self, secret_id: int) -> int:
+        user, secret = self.inventory_service.get_secret(secret_id)
+        for index, item in enumerate(user.secrets, start=1):
+            if item.id == secret.id:
+                return index
+        return secret.id
+
     def selected_detail_text(self, user_name: str | None, secret_id: int | None) -> str:
+        return self.selected_secret_text(user_name, secret_id)
+
+    def selected_user_text(self, user_name: str | None) -> str:
         user = self.get_user(user_name)
         if user is None:
             return self._t("no_user_selected")
-        lines = [
-            f"{self._t('user_name')}: {user.name}",
-            f"{self._t('user_enabled')}: {self._t('on' if user.enabled else 'off')}",
-            f"{self._t('secrets_total')}: {len(user.secrets)}",
-        ]
+        return "\n".join(
+            [
+                f"{self._t('user_name')}: {user.name}",
+                f"{self._t('user_enabled')}: {self._t('on' if user.enabled else 'off')}",
+                f"{self._t('secrets_total')}: {len(user.secrets)}",
+            ]
+        )
+
+    def selected_secret_text(self, user_name: str | None, secret_id: int | None) -> str:
+        user = self.get_user(user_name)
+        if user is None:
+            return self._t("no_user_selected")
+        lines = [f"{self._t('user_name')}: {user.name}"]
         secret = self.get_secret(secret_id)
         if secret is None:
             lines.append(self._t("no_secret_selected"))
@@ -275,19 +293,22 @@ class AppController:
         return self._t("user_deleted", user=user_name, count=removed)
 
     def set_secret_enabled(self, secret_id: int, enabled: bool) -> str:
+        secret_ordinal = self._secret_ordinal(secret_id)
         self.inventory_service.set_secret_enabled(secret_id, enabled)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return self._t("secret_state_changed", secret_id=secret_id, state=self._t("enabled" if enabled else "disabled"))
+        return self._t("secret_state_changed", secret_id=secret_ordinal, state=self._t("enabled" if enabled else "disabled"))
 
     def rotate_secret(self, secret_id: int) -> str:
+        secret_ordinal = self._secret_ordinal(secret_id)
         rotated = self.inventory_service.rotate_secret(secret_id)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return self._t("secret_rotated", secret_id=rotated.id)
+        return self._t("secret_rotated", secret_id=secret_ordinal)
 
     def delete_secret(self, secret_id: int) -> str:
+        secret_ordinal = self._secret_ordinal(secret_id)
         self.inventory_service.delete_secret(secret_id)
         self.runtime_service.reconcile(self.load_settings(), self.systemd_service, restart=True)
-        return self._t("secret_deleted", secret_id=secret_id)
+        return self._t("secret_deleted", secret_id=secret_ordinal)
 
     def selected_user_secret_ids(self, user_name: str | None) -> list[int]:
         if not user_name:
