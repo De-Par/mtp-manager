@@ -42,7 +42,9 @@ from ui.modals import (
     ActionSpec,
     ActionMenuScreen,
     ConfirmScreen,
+    InstallRefScreen,
     SettingsScreen,
+    ServiceMenuScreen,
     TextInputScreen,
     UserConfigureMenuScreen,
     UserSecretsScreen,
@@ -122,6 +124,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
+            yield Static("", id="topbar-balance")
             yield Static("", id="topbar-title")
             yield TopbarClose()
         with Vertical(id="root"):
@@ -923,6 +926,12 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         if reopen_after_action == "service_logs":
             self.call_after_refresh(self._open_service_logs_screen)
             return True
+        if reopen_after_action == "configure_menu":
+            self._open_configure_menu()
+            return True
+        if reopen_after_action == "source_menu":
+            self._open_source_menu()
+            return True
         if isinstance(reopen_after_action, tuple) and len(reopen_after_action) == 3 and reopen_after_action[0] == "user_secrets":
             _, user_name, secret_id = reopen_after_action
 
@@ -948,12 +957,20 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self.state.output_title = result.output_title
             self.state.output_body = result.output_body
             self._notify_result(result.status_message, severity=result.severity)
-            self._clear_busy()
             reopen_after_action = self._reopen_screen_after_action
             self._reopen_screen_after_action = None
+            if reopen_after_action in {"source_menu", "configure_menu"}:
+                if reopen_after_action == "source_menu":
+                    self._open_source_menu()
+                else:
+                    self._open_configure_menu()
+                reopen_after_action = None
             self.run_worker(self.refresh_ui(), exclusive=True)
             if isinstance(self.screen, UserConfigureMenuScreen):
                 self.call_after_refresh(self._refresh_open_user_configure_menu)
+            if isinstance(self.screen, ServiceMenuScreen):
+                self.call_after_refresh(self._refresh_open_service_menu)
+            self._clear_busy()
             if self._reopen_followup_screen(reopen_after_action):
                 return
             return
@@ -964,12 +981,20 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self._notify_result(message, severity="error")
-            self._clear_busy()
             reopen_after_action = self._reopen_screen_after_action
             self._reopen_screen_after_action = None
+            if reopen_after_action in {"source_menu", "configure_menu"}:
+                if reopen_after_action == "source_menu":
+                    self._open_source_menu()
+                else:
+                    self._open_configure_menu()
+                reopen_after_action = None
             self.run_worker(self.refresh_ui(), exclusive=True)
             if isinstance(self.screen, UserConfigureMenuScreen):
                 self.call_after_refresh(self._refresh_open_user_configure_menu)
+            if isinstance(self.screen, ServiceMenuScreen):
+                self.call_after_refresh(self._refresh_open_service_menu)
+            self._clear_busy()
             self._reopen_followup_screen(reopen_after_action)
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -1181,20 +1206,20 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         if action == "update_source":
             self._run_action(
                 self.controller.run_update,
-                busy_label=f"{self._t('update_source', 'Sync telemt')}...",
+                busy_label=f"{self._t('update_source', 'Sync')}...",
             )
             return
         if action == "rebuild":
             self._run_action(
                 self.controller.run_rebuild,
-                busy_label=f"{self._t('rebuild', 'Reinstall telemt')}...",
+                busy_label=f"{self._t('rebuild', 'Reinstall')}...",
             )
             return
         if action == "install_ref":
             current_ref = self.controller.load_settings().telemt_ref
             self.push_screen(
-                TextInputScreen(
-                    self._t("install_ref_title", "Install telemt ref"),
+                InstallRefScreen(
+                    self._t("install_ref_title", "Install telemt"),
                     self._t("install_ref_prompt", "Tag or commit (blank = latest)"),
                     value=current_ref,
                     save_label=self._t("save", "Save"),
@@ -1321,6 +1346,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self._open_service_logs_screen()
             return
         if action == "service_cleanup":
+            self._reopen_screen_after_action = "configure_menu"
             self._run_action(
                 self._run_service_cleanup,
                 busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",

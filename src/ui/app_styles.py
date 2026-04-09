@@ -110,20 +110,26 @@ Screen {
     align: center middle;
     background: $app-header-bg;
     color: $app-header-fg;
-    padding: 0 0 0 3;
+    padding: 0;
     text-style: bold;
+}
+
+#topbar-balance {
+    width: {TOPBAR_CLOSE_WIDTH};
+    min-width: {TOPBAR_CLOSE_WIDTH};
+    height: {TOPBAR_HEIGHT};
 }
 
 #topbar-title {
     width: 1fr;
     height: 1fr;
     content-align: center middle;
+    text-align: center;
     color: $app-header-fg;
     text-style: bold;
 }
 
 #topbar-close {
-    dock: right;
     width: {TOPBAR_CLOSE_WIDTH};
     min-width: {TOPBAR_CLOSE_WIDTH};
     height: {TOPBAR_HEIGHT};

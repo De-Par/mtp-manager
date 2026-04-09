@@ -74,9 +74,11 @@ WINDOW_TITLE_EMOJI_KEYS = {
     "actions": "⚡",
     "configure": "🔩",
     "source": "📦",
+    "manage_telemt": "📦",
     "edit_settings": "🔩",
     "language": "🌍",
     "service_control": "🔧",
+    "install_ref_title": "📥",
     "service_logs_title": "📜",
     "service_status_title": "📡",
     "quit_confirm_title": "🚪",
@@ -360,13 +362,126 @@ class ConfirmScreen(ModalScreen[bool]):
         self.set_focus(None)
 
 
-class TextInputScreen(ModalScreen[str | None]):
-    CSS = ConfirmScreen.CSS + """
+FORM_DIALOG_CSS = """
+    #confirm-dialog {
+        min-width: 28;
+        padding: 1 1;
+    }
+
+    .form-scroll {
+        width: 1fr;
+        height: auto;
+        background: @@APP_SURFACE@@;
+        scrollbar-color: $scrollbar-color;
+        scrollbar-color-hover: $scrollbar-color-hover;
+        scrollbar-color-active: $scrollbar-color-active;
+        scrollbar-background: $scrollbar-background;
+        scrollbar-background-hover: $scrollbar-background-hover;
+        scrollbar-background-active: $scrollbar-background-active;
+        scrollbar-size-vertical: @@SCROLLBAR_SIZE@@;
+        scrollbar-size-horizontal: @@SCROLLBAR_SIZE@@;
+        padding: 0;
+    }
+
+    .form-body {
+        width: 1fr;
+        height: auto;
+        padding: 0 2;
+    }
+
+    .form-label {
+        width: 1fr;
+        height: auto;
+    }
+
+    .dialog-actions {
+        margin-top: 0;
+        padding-top: 1;
+    }
+
     Input {
+        width: 1fr;
         margin-top: 1;
         margin-bottom: 1;
     }
-    """
+"""
+
+FORM_DIALOG_BINDINGS = [
+    ("escape", "request_quit", "Quit"),
+    ("q", "request_quit", "Quit"),
+]
+
+
+def _modal_viewport_size(screen: ModalScreen[object]) -> tuple[int, int]:
+    width = screen.size.width
+    height = screen.size.height
+    if width > 0 and height > 0:
+        return width, height
+    try:
+        app_size = screen.app.size
+    except Exception:
+        app_size = None
+    if app_size is not None:
+        width = app_size.width or width
+        height = app_size.height or height
+    return max(80, width), max(24, height)
+
+
+def _wrapped_line_count(text: str, width: int) -> int:
+    usable_width = max(1, width)
+    return max(1, (cell_len(text) + usable_width - 1) // usable_width)
+
+
+def _dialog_form_bounds(screen: ModalScreen[object]) -> tuple[int, int]:
+    viewport_width, viewport_height = _modal_viewport_size(screen)
+    horizontal_margin = max(1, viewport_width // 60)
+    vertical_margin = max(1, viewport_height // 30)
+    dialog_width = max(28, viewport_width - horizontal_margin * 2)
+    title_height = 3
+    actions_height = BUTTON_HEIGHT + 1
+    chrome_height = 4
+    form_height = max(
+        BUTTON_HEIGHT + 2,
+        viewport_height - vertical_margin * 2 - title_height - actions_height - chrome_height,
+    )
+    return dialog_width, form_height
+
+
+def _form_content_width(dialog_width: int) -> int:
+    dialog_padding = 2
+    form_padding = 4
+    return max(12, dialog_width - dialog_padding - form_padding)
+
+
+class AdaptiveFormDialogMixin:
+    def action_request_quit(self) -> None:
+        request_app_quit(self)
+
+    def _desired_dialog_width(self, max_dialog_width: int) -> int:
+        return max_dialog_width
+
+    def _estimated_form_height(self, dialog_width: int) -> int:
+        raise NotImplementedError
+
+    def _layout_metrics(self) -> tuple[int, int]:
+        max_dialog_width, max_form_height = _dialog_form_bounds(self)
+        dialog_width = min(self._desired_dialog_width(max_dialog_width), max_dialog_width)
+        form_height = min(self._estimated_form_height(dialog_width), max_form_height)
+        return dialog_width, form_height
+
+    def _apply_form_layout(self) -> None:
+        if not getattr(self, "is_mounted", False):
+            return
+        dialog = self.query_one("#confirm-dialog", Container)
+        scroll = self.query_one(".form-scroll", VerticalScroll)
+        dialog_width, form_height = self._layout_metrics()
+        dialog.styles.width = dialog_width
+        scroll.styles.height = form_height
+
+
+class TextInputScreen(AdaptiveFormDialogMixin, ModalScreen[str | None]):
+    CSS = _css(ConfirmScreen.CSS + FORM_DIALOG_CSS)
+    BINDINGS = FORM_DIALOG_BINDINGS
 
     def __init__(
         self,
@@ -388,12 +503,25 @@ class TextInputScreen(ModalScreen[str | None]):
         self.cancel_label = cancel_label
         self.submit_handler = submit_handler
 
+    def _desired_dialog_width(self, max_dialog_width: int) -> int:
+        label_width = cell_len(self.label_text) + 10
+        return min(max_dialog_width, max(42, label_width))
+
+    def _estimated_form_height(self, dialog_width: int) -> int:
+        label_lines = _wrapped_line_count(self.label_text, _form_content_width(dialog_width))
+        return label_lines + BUTTON_HEIGHT + 2
+
     def compose(self) -> ComposeResult:
+        dialog_width, form_height = self._layout_metrics()
         with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
+            with Container(id="confirm-dialog") as dialog:
+                dialog.styles.width = dialog_width
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.label_text)
-                yield Input(value=self.initial_value, password=self.password, id="value")
+                with VerticalScroll(classes="form-scroll") as scroll:
+                    scroll.styles.height = form_height
+                    with Vertical(classes="form-body"):
+                        yield Static(self.label_text, classes="form-label")
+                        yield Input(value=self.initial_value, password=self.password, id="value")
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.cancel_label, id="cancel")
                     yield Button(self.save_label, id="save", variant="success")
@@ -415,29 +543,21 @@ class TextInputScreen(ModalScreen[str | None]):
         self.dismiss(value)
 
     def on_mount(self) -> None:
+        self._apply_form_layout()
         self.query_one("#value", Input).focus()
 
+    def on_resize(self, event: events.Resize) -> None:
+        self._apply_form_layout()
 
-class SettingsScreen(ModalScreen[dict[str, str] | None]):
-    CSS = _css(ConfirmScreen.CSS + """
-    .field-label {
-        color: @@UI_ACCENT_INK@@;
-        margin-top: 1;
-        margin-bottom: 0;
-    }
 
-    Input {
-        margin-top: 0;
-        margin-bottom: 1;
-        background: @@APP_SURFACE@@;
-        color: @@FOCUS_INK@@;
-        border: round @@INPUT_BORDER@@;
-    }
+class InstallRefScreen(TextInputScreen):
+    def _desired_dialog_width(self, max_dialog_width: int) -> int:
+        return max_dialog_width
 
-    Input:focus {
-        border: round @@UI_BORDER_ACTIVE@@;
-    }
-    """)
+
+class SettingsScreen(AdaptiveFormDialogMixin, ModalScreen[dict[str, str] | None]):
+    CSS = _css(ConfirmScreen.CSS + FORM_DIALOG_CSS)
+    BINDINGS = FORM_DIALOG_BINDINGS
 
     def __init__(
         self,
@@ -463,20 +583,41 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
         self.fake_tls_domain_label = fake_tls_domain_label
         self.ad_tag_label = ad_tag_label
 
+    def _field_labels(self) -> list[str]:
+        return [
+            self.mt_port_label,
+            self.stats_port_label,
+            self.workers_label,
+            self.fake_tls_domain_label,
+            self.ad_tag_label,
+        ]
+
+    def _estimated_form_height(self, dialog_width: int) -> int:
+        content_width = _form_content_width(dialog_width)
+        return sum(
+            _wrapped_line_count(label, content_width) + BUTTON_HEIGHT + 2
+            for label in self._field_labels()
+        )
+
     def compose(self) -> ComposeResult:
+        dialog_width, form_height = self._layout_metrics()
         with Container(id="confirm-overlay"):
-            with Container(id="confirm-dialog"):
+            with Container(id="confirm-dialog") as dialog:
+                dialog.styles.width = dialog_width
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
-                yield Static(self.mt_port_label, classes="field-label")
-                yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
-                yield Static(self.stats_port_label, classes="field-label")
-                yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
-                yield Static(self.workers_label, classes="field-label")
-                yield Input(str(self.settings.workers), id="workers", type="integer")
-                yield Static(self.fake_tls_domain_label, classes="field-label")
-                yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
-                yield Static(self.ad_tag_label, classes="field-label")
-                yield Input(self.settings.ad_tag, id="ad_tag")
+                with VerticalScroll(classes="form-scroll") as scroll:
+                    scroll.styles.height = form_height
+                    with Vertical(classes="form-body"):
+                        yield Static(self.mt_port_label, classes="form-label")
+                        yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
+                        yield Static(self.stats_port_label, classes="form-label")
+                        yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
+                        yield Static(self.workers_label, classes="form-label")
+                        yield Input(str(self.settings.workers), id="workers", type="integer")
+                        yield Static(self.fake_tls_domain_label, classes="form-label")
+                        yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
+                        yield Static(self.ad_tag_label, classes="form-label")
+                        yield Input(self.settings.ad_tag, id="ad_tag")
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.cancel_label, id="cancel")
                     yield Button(self.save_label, id="save", variant="success")
@@ -496,7 +637,11 @@ class SettingsScreen(ModalScreen[dict[str, str] | None]):
         )
 
     def on_mount(self) -> None:
+        self._apply_form_layout()
         self.query_one("#mt_port", Input).focus()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._apply_form_layout()
 
 
 class MenuModalScreen(ModalScreen[str | None]):
@@ -506,14 +651,30 @@ class MenuModalScreen(ModalScreen[str | None]):
         max-width: 68;
     }
 
-    .menu-actions {
+    .menu-actions-scroll {
+        width: 1fr;
         height: auto;
         margin-top: 1;
+        background: @@APP_SURFACE@@;
+        scrollbar-color: $scrollbar-color;
+        scrollbar-color-hover: $scrollbar-color-hover;
+        scrollbar-color-active: $scrollbar-color-active;
+        scrollbar-background: $scrollbar-background;
+        scrollbar-background-hover: $scrollbar-background-hover;
+        scrollbar-background-active: $scrollbar-background-active;
+        scrollbar-size-vertical: @@SCROLLBAR_SIZE@@;
+        scrollbar-size-horizontal: @@SCROLLBAR_SIZE@@;
+        padding: 0;
+    }
+
+    .menu-actions {
+        height: auto;
+        width: 1fr;
         align: center top;
     }
 
-    ActionMenuScreen.-compact-menu .menu-actions,
-    ServiceMenuScreen.-compact-menu .menu-actions {
+    ActionMenuScreen.-compact-menu .menu-actions-scroll,
+    ServiceMenuScreen.-compact-menu .menu-actions-scroll {
         margin-top: 0;
     }
 
@@ -792,14 +953,15 @@ class MenuModalScreen(ModalScreen[str | None]):
         with Container(id="confirm-overlay"):
             with Container(id="confirm-dialog"):
                 yield Static(format_window_title(self.title_text), classes="dialog-title")
-                with Vertical(classes="menu-actions"):
-                    for action in self.actions:
-                        yield Button(
-                            action.label,
-                            id=f"menu-{action.key}",
-                            variant="default",
-                            classes=self._button_classes(action),
-                        )
+                with VerticalScroll(classes="menu-actions-scroll"):
+                    with Vertical(classes="menu-actions"):
+                        for action in self.actions:
+                            yield Button(
+                                action.label,
+                                id=f"menu-{action.key}",
+                                variant="default",
+                                classes=self._button_classes(action),
+                            )
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.close_label, id="cancel", classes="dialog-close")
 
@@ -837,6 +999,7 @@ class MenuModalScreen(ModalScreen[str | None]):
             variant_class = self._variant_class_name(action.variant)
             if variant_class is not None:
                 button.add_class(variant_class)
+        self._sync_menu_layout()
         if focus_index is not None and 0 <= focus_index < len(buttons):
             buttons[focus_index].focus()
 
@@ -894,6 +1057,27 @@ class MenuModalScreen(ModalScreen[str | None]):
     def _clear_initial_focus(self) -> None:
         self.set_focus(None)
 
+    def _sync_menu_layout(self) -> None:
+        if not self.is_mounted:
+            return
+        dialog = self.query_one("#confirm-dialog", Container)
+        actions_scroll = self.query_one(".menu-actions-scroll", VerticalScroll)
+        actions_body = self.query_one(".menu-actions", Vertical)
+        max_label_width = max((cell_len(action.label) for action in self.actions), default=0)
+        button_width = max(MENU_BUTTON_WIDTH, max_label_width + 4)
+        available_width = max(24, self.size.width - 6)
+        dialog.styles.width = min(button_width + 8, available_width)
+
+        title_block_height = 3
+        close_row_height = BUTTON_HEIGHT + 2
+        dialog_chrome_height = 4
+        content_height = max(
+            BUTTON_HEIGHT,
+            actions_body.virtual_size.height or actions_body.outer_size.height or len(self.actions) * (BUTTON_HEIGHT + 1),
+        )
+        available_scroll_height = max(BUTTON_HEIGHT, self.size.height - title_block_height - close_row_height - dialog_chrome_height - 4)
+        actions_scroll.styles.height = min(content_height, available_scroll_height)
+
     def _suspend_focus(self) -> None:
         self.add_class("-suppress-initial-highlight")
         self.set_focus(None)
@@ -914,23 +1098,37 @@ class MenuModalScreen(ModalScreen[str | None]):
             self._resume_button_highlight()
 
     def on_mount(self) -> None:
+        self._sync_menu_layout()
         if self.auto_focus_first:
             buttons = self._focusable_buttons()
             if buttons:
                 buttons[0].focus()
         else:
             self.add_class("-suppress-initial-highlight")
-            self.call_after_refresh(self._clear_initial_focus)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._sync_menu_layout()
 
 
 class ActionMenuScreen(MenuModalScreen):
     pass
 
 
-class UserConfigureMenuScreen(ActionMenuScreen):
+class InlineActionMenuScreen(ActionMenuScreen):
     def handle_menu_action(self, action: str) -> None:
         if self.action_handler is not None and self.action_handler(action):
             self._suspend_focus()
+            return
+        self.dismiss(action)
+
+
+class UserConfigureMenuScreen(InlineActionMenuScreen):
+    pass
+
+
+class SourceMenuScreen(InlineActionMenuScreen):
+    def handle_menu_action(self, action: str) -> None:
+        if self.action_handler is not None and self.action_handler(action):
             return
         self.dismiss(action)
 
@@ -946,9 +1144,10 @@ class ServiceMenuScreen(MenuModalScreen):
         *,
         open_status: Callable[[], None],
         open_logs: Callable[[], None],
+        action_handler: Callable[[str], bool] | None = None,
         close_label: str = "close",
     ) -> None:
-        super().__init__(title, actions, auto_focus_first=False, close_label=close_label)
+        super().__init__(title, actions, auto_focus_first=False, close_label=close_label, action_handler=action_handler)
         self.open_status = open_status
         self.open_logs = open_logs
 
@@ -961,11 +1160,15 @@ class ServiceMenuScreen(MenuModalScreen):
             self._suspend_focus()
             self.open_logs()
             return
+        if self.action_handler is not None and self.action_handler(action):
+            self._suspend_focus()
+            return
         self.dismiss(action)
 
     def _suspend_focus(self) -> None:
         self.add_class("-suppress-initial-highlight")
         self.set_focus(None)
+        self.call_after_refresh(self._clear_initial_focus)
 
     def on_mount(self) -> None:
         super().on_mount()

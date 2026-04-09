@@ -13,11 +13,16 @@ from ui.modals import (
     ActionSpec,
     ConfirmScreen,
     FullscreenTextScreen,
+    InstallRefScreen,
     ServiceMenuScreen,
+    SourceMenuScreen,
     TextInputScreen,
     UserConfigureMenuScreen,
     UserSecretsScreen,
 )
+
+CONFIGURE_MENU_HANDLED = "__configure_menu_handled__"
+SOURCE_MENU_HANDLED = "__source_menu_handled__"
 
 
 class ModalFlowMixin:
@@ -121,10 +126,29 @@ class ModalFlowMixin:
             ActionMenuScreen(
                 self._t("configure"),
                 translated_actions(self._configure_actions(), self._t),
+                action_handler=self._handle_configure_menu_inline_action,
                 close_label=self._t("close", "Close"),
             ),
-            self._handle_action_menu,
+            self._handle_configure_menu_result,
         )
+
+    def _handle_configure_menu_inline_action(self, action: str) -> bool:
+        if action != "service_cleanup":
+            return False
+        current_screen = self.screen
+        self._reopen_screen_after_action = "configure_menu"
+        self._run_action(
+            self._run_service_cleanup,
+            busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
+        )
+        if isinstance(current_screen, ActionMenuScreen):
+            current_screen.dismiss(CONFIGURE_MENU_HANDLED)
+        return True
+
+    def _handle_configure_menu_result(self, action: str | None) -> None:
+        if action == CONFIGURE_MENU_HANDLED:
+            return
+        self._handle_action_menu(action)
 
     def _build_service_menu_screen(self) -> ServiceMenuScreen:
         return ServiceMenuScreen(
@@ -135,11 +159,24 @@ class ModalFlowMixin:
             ),
             open_status=self._open_service_status_screen,
             open_logs=self._open_service_logs_screen,
+            action_handler=self._handle_service_menu_inline_action,
             close_label=self._t("close", "Close"),
         )
 
     def _open_service_menu(self) -> None:
         self.push_screen(self._build_service_menu_screen(), self._handle_service_menu_result)
+
+    def _handle_service_menu_inline_action(self, action: str) -> bool:
+        if action == "service_start":
+            self._run_action(self.controller.service_start)
+            return True
+        if action == "service_restart":
+            self._run_action(self.controller.service_restart)
+            return True
+        if action == "service_stop":
+            self._run_action(self.controller.service_stop)
+            return True
+        return False
 
     def _handle_service_menu_result(self, action: str | None) -> None:
         if action is None:
@@ -147,19 +184,90 @@ class ModalFlowMixin:
             return
         self._handle_ui_action(action)
 
+    def _refresh_open_service_menu(self) -> None:
+        current_screen = self.screen
+        if not isinstance(current_screen, ServiceMenuScreen):
+            return
+        current_screen.update_actions(
+            translated_actions(
+                self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None),
+                self._t,
+            )
+        )
+
+    def _open_install_ref_screen(self) -> None:
+        current_ref = self.controller.load_settings().telemt_ref
+        self.push_screen(
+            InstallRefScreen(
+                self._t("install_ref_title", "Install telemt"),
+                self._t("install_ref_prompt", "Tag or commit (blank = latest)"),
+                value=current_ref,
+                save_label=self._t("save", "Save"),
+                cancel_label=self._t("cancel", "Cancel"),
+            ),
+            self._handle_install_ref,
+        )
+
     def _open_source_menu(self) -> None:
         self.push_screen(
-            ActionMenuScreen(
-                self._t("source", "Binary"),
+            SourceMenuScreen(
+                self._t("manage_telemt", "Manage telemt"),
                 translated_actions(self._source_actions(), self._t),
+                action_handler=self._handle_source_menu_inline_action,
                 close_label=self._t("close", "Close"),
             ),
             self._handle_source_menu_result,
         )
 
+    def _handle_source_menu_inline_action(self, action: str) -> bool:
+        current_screen = self.screen
+        if action == "update_source":
+            self._reopen_screen_after_action = "source_menu"
+            self._run_action(
+                self.controller.run_update,
+                busy_label=f"{self._t('update_source', 'Sync')}...",
+            )
+            if isinstance(current_screen, SourceMenuScreen):
+                current_screen.dismiss(SOURCE_MENU_HANDLED)
+            return True
+        if action == "rebuild":
+            self._reopen_screen_after_action = "source_menu"
+            self._run_action(
+                self.controller.run_rebuild,
+                busy_label=f"{self._t('rebuild', 'Reinstall')}...",
+            )
+            if isinstance(current_screen, SourceMenuScreen):
+                current_screen.dismiss(SOURCE_MENU_HANDLED)
+            return True
+        if action == "install_ref":
+            if isinstance(current_screen, SourceMenuScreen):
+                current_screen.reset_interaction_state()
+            self._open_install_ref_screen()
+            return True
+        return False
+
     def _handle_source_menu_result(self, action: str | None) -> None:
         if action is None:
             self._open_configure_menu()
+            return
+        if action == SOURCE_MENU_HANDLED:
+            return
+        if action == "update_source":
+            self._reopen_screen_after_action = "source_menu"
+            self._run_action(
+                self.controller.run_update,
+                busy_label=f"{self._t('update_source', 'Sync')}...",
+            )
+            return
+        if action == "rebuild":
+            self._reopen_screen_after_action = "source_menu"
+            self._run_action(
+                self.controller.run_rebuild,
+                busy_label=f"{self._t('rebuild', 'Reinstall')}...",
+            )
+            return
+        if action == "install_ref":
+            self._open_install_ref_screen()
             return
         self._handle_action_menu(action)
 
@@ -175,7 +283,6 @@ class ModalFlowMixin:
                 actions,
                 auto_focus_first=False,
                 close_label=self._t("close", "Close"),
-                compact=True,
             ),
             self._handle_language_menu,
         )
@@ -440,14 +547,21 @@ class ModalFlowMixin:
             self._run_action(lambda: self.controller.delete_secret(self.state.selected_secret_id))
 
     def _handle_install_ref(self, result: str | None) -> None:
+        current_screen = self.screen
+        if isinstance(current_screen, SourceMenuScreen):
+            current_screen.reset_interaction_state()
         if result is None:
-            self._open_source_menu()
+            if not isinstance(current_screen, SourceMenuScreen):
+                self._open_source_menu()
             return
         busy_label = self._t("installing_ref").format(ref=result.strip()) if result.strip() else self._t("installing_latest")
+        self._reopen_screen_after_action = "source_menu"
         self._run_action(
             lambda: self.controller.install_telemt_ref(result),
             busy_label=busy_label,
         )
+        if isinstance(current_screen, SourceMenuScreen):
+            current_screen.dismiss(SOURCE_MENU_HANDLED)
 
     def _handle_settings_screen(self, result: dict[str, str] | None) -> None:
         if not result:

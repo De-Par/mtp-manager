@@ -88,27 +88,28 @@ def configure_actions() -> list[ActionSpec]:
         ActionSpec("setup", "setup"),
         ActionSpec("edit_settings", "edit_settings"),
         ActionSpec("source_menu", "source_menu"),
+        ActionSpec("service_cleanup", "service_cleanup", "warning"),
         ActionSpec("factory_reset", "factory_reset", "error"),
     ]
 
 
 def source_actions() -> list[ActionSpec]:
-    """Actions shown in the Binary modal"""
+    """Actions shown in the Telemt modal"""
     return [
-        ActionSpec("update_source", "update_source"),
-        ActionSpec("rebuild", "rebuild"),
         ActionSpec("install_ref", "install_ref"),
+        ActionSpec("rebuild", "rebuild"),
+        ActionSpec("update_source", "update_source"),
     ]
 
 
 def service_actions(service_active: bool) -> list[ActionSpec]:
     """Actions shown in the Service modal"""
     return [
-        ActionSpec("service_restart" if service_active else "service_start", "service_restart" if service_active else "service_start"),
-        ActionSpec("service_stop", "service_stop"),
         ActionSpec("service_status", "service_status"),
         ActionSpec("service_logs", "service_logs"),
-        ActionSpec("service_cleanup", "service_cleanup", "warning"),
+        ActionSpec("service_start", "service_start"),
+        ActionSpec("service_restart", "service_restart"),
+        ActionSpec("service_stop", "service_stop", "error"),
     ]
 
 
