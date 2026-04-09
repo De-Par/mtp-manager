@@ -1,4 +1,4 @@
-"""Centralized application CSS for the main Textual app."""
+"""Centralized application CSS for the main Textual app"""
 
 from __future__ import annotations
 
@@ -167,7 +167,7 @@ Screen {
 #root {
     layout: vertical;
     height: 1fr;
-    padding: 1;
+    padding: 1 2;
     background: $app-surface;
 }
 

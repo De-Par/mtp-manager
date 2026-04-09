@@ -8,21 +8,28 @@ from models.secret import SecretRecord, UserRecord
 LabelTranslateFn = Callable[[str, str | None], str]
 
 SCREEN_ORDER = ["dashboard", "users", "language"]
+SECTION_ORDER = ["dashboard", "configure_menu", "service_menu", "users", "language"]
 
 SCREEN_LABEL_KEYS = {
     "dashboard": "dashboard",
-    "users": "users_secrets",
+    "configure_menu": "configure",
+    "service_menu": "service_control",
+    "users": "users",
     "language": "language",
 }
 
 SCREEN_SHORT_LABEL_KEYS = {
     "dashboard": "dashboard",
+    "configure_menu": "configure",
+    "service_menu": "service_control",
     "users": "users",
     "language": "language",
 }
 
 SCREEN_EMOJIS = {
     "dashboard": "📊",
+    "configure_menu": "🔧",
+    "service_menu": "💻",
     "users": "👥",
     "language": "🌍",
 }
@@ -43,12 +50,12 @@ def screen_label(screen: str, translate: LabelTranslateFn) -> str:
 
 
 def screen_short_label(screen: str, translate: LabelTranslateFn) -> str:
-    """Translate a shortened workspace label for narrower sections panels."""
+    """Translate a shortened workspace label for narrower sections panels"""
     return translate(SCREEN_SHORT_LABEL_KEYS.get(screen, screen), screen)
 
 
 def screen_icon(screen: str) -> str:
-    """Return the icon shown for a top-level workspace."""
+    """Return the icon shown for a top-level workspace"""
     return SCREEN_EMOJIS.get(screen, "•")
 
 
@@ -102,7 +109,7 @@ def selected_secret_record(owner: UserRecord | None, selected_secret_id: int | N
 def section_values(current_screen: str) -> tuple[list[str], int]:
     """Return ordered section ids and the currently selected index"""
     normalized_screen = normalize_screen(current_screen)
-    return list(SCREEN_ORDER), SCREEN_ORDER.index(normalized_screen)
+    return list(SECTION_ORDER), SECTION_ORDER.index(normalized_screen)
 
 
 def user_entries(
@@ -118,7 +125,7 @@ def user_entries(
 
 
 def secret_list_items(owner: UserRecord | None) -> list[tuple[int, str]]:
-    """Return visible secret rows using stable ids and UI-local ordinal labels."""
+    """Return visible secret rows using stable ids and UI-local ordinal labels"""
     if owner is None:
         return []
     return [(secret.id, f"#{index} {secret.note or '-'}") for index, secret in enumerate(owner.secrets, start=1)]

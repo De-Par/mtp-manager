@@ -1,4 +1,4 @@
-"""Shared UI theme constants for the Textual interface."""
+"""Shared UI theme constants for the Textual interface"""
 
 APP_SURFACE = "#ffffff"
 UI_INK = "#1f2937"

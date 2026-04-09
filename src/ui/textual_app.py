@@ -29,6 +29,7 @@ from ui.dashboard import capture_hardware_snapshot, render_fields, render_status
 import ui.feedback as ui_feedback
 from ui.lists import (
     SCREEN_ORDER,
+    SECTION_ORDER,
     normalize_screen,
     refresh_selection,
     screen_menu_label,
@@ -194,7 +195,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             root.remove_class("compact")
 
     def _section_min_width(self, *, icon_only: bool = False, short: bool = False) -> int:
-        labels = [self._screen_menu_label(screen, icon_only=icon_only, short=short) for screen in SCREEN_ORDER]
+        labels = [self._screen_menu_label(screen, icon_only=icon_only, short=short) for screen in SECTION_ORDER]
         minimum = self.MIN_SECTION_ICON_WIDTH if icon_only else self.MIN_SECTION_TEXT_WIDTH
         chrome = 4 if icon_only else 6
         return max(minimum, max(cell_len(label) for label in labels) + chrome)
@@ -838,6 +839,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         self.query_one("#activity-content", Static).update(activity_body)
         show_user_lists = users_mode
         show_activity_panel = bool(activity_body.strip()) and not self._busy
+        actions_panel = self.query_one("#actions-panel", Vertical)
         self.query_one("#explorer-panel", Vertical).display = show_user_lists
         self.query_one("#activity-panel", Vertical).display = show_activity_panel
         explorer_panel = self.query_one("#explorer-panel", Vertical)
@@ -920,8 +922,10 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             if not await self._replace_list("secrets-list", secret_items, secret_index):
                 self._queue_refresh_ui()
                 return
+        actions = self._action_specs()
+        actions_panel.display = bool(actions)
         if refresh_actions:
-            if not await self._replace_actions(self._action_specs()):
+            if not await self._replace_actions(actions):
                 self._queue_refresh_ui()
                 return
         if isinstance(self.screen, UserSecretsScreen):
@@ -1058,6 +1062,12 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         list_id = event.list_view.id or ""
         if list_id == "sections-list":
             screen = normalize_screen(str(item.value))
+            if screen == "configure_menu":
+                self._open_configure_menu()
+                return
+            if screen == "service_menu":
+                self._open_service_menu()
+                return
             if screen == "language":
                 self._open_language_menu()
                 return
@@ -1083,7 +1093,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         list_id = event.list_view.id or ""
         if list_id == "sections-list":
             screen = normalize_screen(str(item.value))
-            if screen == "language":
+            if screen in {"configure_menu", "service_menu", "language"}:
                 return
             if screen != self.state.current_screen:
                 self._open_screen(screen)

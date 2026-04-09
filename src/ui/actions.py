@@ -116,13 +116,8 @@ def primary_screen_actions(current_screen: str, has_history: bool) -> list[Actio
     """Top-level action bar actions for the currently selected workspace"""
     actions: list[ActionSpec] = []
     if current_screen == "dashboard":
-        actions.extend(
-            [
-                ActionSpec("configure_menu", "configure_menu"),
-                ActionSpec("service_menu", "service_menu"),
-            ]
-        )
         return actions
+        
     if current_screen == "users":
         actions.extend(
             [

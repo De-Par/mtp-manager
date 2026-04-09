@@ -72,12 +72,12 @@ from ui.widgets import ValueListItem
 
 WINDOW_TITLE_EMOJI_KEYS = {
     "actions": "⚡",
-    "configure": "🔩",
+    "configure": "🔧",
     "source": "📦",
     "manage_telemt": "📦",
     "edit_settings": "🔩",
     "language": "🌍",
-    "service_control": "🔧",
+    "service_control": "💻",
     "install_ref_title": "📥",
     "service_logs_title": "📜",
     "service_status_title": "📡",
@@ -435,7 +435,7 @@ def _wrapped_line_count(text: str, width: int) -> int:
 def _dialog_form_bounds(screen: ModalScreen[object]) -> tuple[int, int]:
     viewport_width, viewport_height = _modal_viewport_size(screen)
     horizontal_margin = max(1, viewport_width // 60)
-    vertical_margin = max(1, viewport_height // 30)
+    vertical_margin = max(horizontal_margin + 1, viewport_height // 50, 1)
     dialog_width = max(28, viewport_width - horizontal_margin * 2)
     title_height = 3
     actions_height = BUTTON_HEIGHT + 1

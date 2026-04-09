@@ -1,4 +1,4 @@
-"""Busy-state, toast, and action-execution helpers for the Textual UI."""
+"""Busy-state, toast, and action-execution helpers for the Textual UI"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ BUSY_FRAMES = ("⏳", "⌛")
 
 
 def render_busy_bar(progress: float, *, width: int = 18) -> Text:
-    """Render a compact progress bar used by the busy overlay."""
+    """Render a compact progress bar used by the busy overlay"""
     filled = max(0, min(width, int((progress / 100) * width)))
     text = Text()
     if filled:
@@ -29,7 +29,7 @@ def render_busy_bar(progress: float, *, width: int = 18) -> Text:
 
 
 def busy_dialog_width(*, label: str, frame_index: int, viewport_width: int) -> int:
-    """Pick a dialog width wide enough for the busy label without early wrapping."""
+    """Pick a dialog width wide enough for the busy label without early wrapping"""
     frame = BUSY_FRAMES[frame_index % len(BUSY_FRAMES)]
     label_width = cell_len(f"{frame} {label}")
     content_width = max(18, label_width)
@@ -39,7 +39,7 @@ def busy_dialog_width(*, label: str, frame_index: int, viewport_width: int) -> i
 
 
 def set_actions_disabled(buttons: Iterable[Button], disabled: bool) -> None:
-    """Enable or disable the current action buttons as a group."""
+    """Enable or disable the current action buttons as a group"""
     for button in buttons:
         button.disabled = disabled
 
@@ -51,7 +51,7 @@ def notify_result(
     *,
     severity: str = "information",
 ) -> None:
-    """Mirror a notification into UI state and emit the toast."""
+    """Mirror a notification into UI state and emit the toast"""
     state.status_message = message
     notifier(message, severity=severity)
 
@@ -64,7 +64,7 @@ def execute_action(
     output_title: str | None = None,
     success_message: str | None = None,
 ) -> ActionTaskResult:
-    """Run a controller action and normalize it into a UI-friendly result payload."""
+    """Run a controller action and normalize it into a UI-friendly result payload"""
     try:
         result = fn()
     except Exception as exc:

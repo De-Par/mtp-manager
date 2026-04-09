@@ -1,4 +1,4 @@
-"""Menu, modal, and dialog flow helpers for the main Textual app."""
+"""Menu, modal, and dialog flow helpers for the main Textual app"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ SOURCE_MENU_HANDLED = "__source_menu_handled__"
 
 
 class ModalFlowMixin:
-    """Keep modal builders and result handlers out of the main app controller."""
+    """Keep modal builders and result handlers out of the main app controller"""
 
     @staticmethod
     def _format_secret_created_at(value: str) -> str:

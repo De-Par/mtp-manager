@@ -1,4 +1,4 @@
-"""Reusable widgets and support types for the main Textual app."""
+"""Reusable widgets and support types for the main Textual app"""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ class TopbarClose(Container):
 
 
 class UsersTable(DataTable):
-    """Users table with stable custom mouse messages for rows and headers."""
+    """Users table with stable custom mouse messages for rows and headers"""
 
     class HeaderClicked(Message):
         def __init__(self, table: "UsersTable", column_key: str) -> None:
@@ -146,7 +146,7 @@ class UsersTable(DataTable):
         self._show_hover_cursor = False
 
     def current_layout_signature(self, *, current_screen: str, users_subpanel: Vertical) -> tuple[int, int] | None:
-        """Return the effective users-table geometry for resize-aware rerenders."""
+        """Return the effective users-table geometry for resize-aware rerenders"""
         if current_screen != "users" or not self.is_attached:
             return None
         width_candidates = [
@@ -174,7 +174,7 @@ class UsersTable(DataTable):
         sort_column: str,
         sort_reverse: bool,
     ) -> list[UserRecord]:
-        """Return users sorted according to the current table state."""
+        """Return users sorted according to the current table state"""
         users = list(users_snapshot)
         match sort_column:
             case "name":
@@ -198,7 +198,7 @@ class UsersTable(DataTable):
         fallback: str,
         column_key: str,
     ) -> Text:
-        """Build a centered header label with a sort marker for the active column."""
+        """Build a centered header label with a sort marker for the active column"""
         label = translate(label_key, fallback)
         is_active = sort_column == column_key
         direction = "▾" if sort_reverse else "▴"
@@ -215,7 +215,7 @@ class UsersTable(DataTable):
 
     @staticmethod
     def cell_text(value: object) -> str:
-        """Extract plain text from a cell value for sorting and comparisons."""
+        """Extract plain text from a cell value for sorting and comparisons"""
         if isinstance(value, Text):
             return value.plain
         renderable = getattr(value, "renderable", None)
@@ -227,7 +227,7 @@ class UsersTable(DataTable):
         return str(value)
 
     def set_selection_state(self, row_selected: bool) -> None:
-        """Keep selection styling in sync with the table's toggle state."""
+        """Keep selection styling in sync with the table's toggle state"""
         if row_selected:
             self.show_cursor = True
             self.remove_class("no-selection")
@@ -245,7 +245,7 @@ class UsersTable(DataTable):
         row_selected: bool,
         translate: Callable[..., str],
     ) -> None:
-        """Apply sorting in-place and keep header labels plus selection consistent."""
+        """Apply sorting in-place and keep header labels plus selection consistent"""
         if self.row_count == 0:
             return
 
@@ -328,7 +328,7 @@ class UsersTable(DataTable):
         translate: Callable[..., str],
         panel_width: int,
     ) -> str | None:
-        """Rebuild the users table for the current viewport width and sort state."""
+        """Rebuild the users table for the current viewport width and sort state"""
         users = self.sorted_users(
             users_snapshot,
             sort_column=sort_column,
