@@ -102,6 +102,7 @@ def _build_window_title_emojis() -> dict[str, str]:
 
 
 WINDOW_TITLE_EMOJIS = _build_window_title_emojis()
+TITLE_PREFIX_EMOJIS = set(WINDOW_TITLE_EMOJIS.values()) | {"✨", "👤", "🔐"}
 
 
 CSS_REPLACEMENTS = {
@@ -162,10 +163,10 @@ def format_window_title(title: str) -> str:
     title = title.strip()
     if not title:
         return title
-    if title[0] in "⚡⚙🛠📜📡🌐👤🔐🗑🚨📤📈":
-        return title
+    if title[0] in TITLE_PREFIX_EMOJIS:
+        return f"{title[0]} {title[1:].strip()}"
     emoji = WINDOW_TITLE_EMOJIS.get(title.casefold(), "✨")
-    return f"{emoji}  {title}"
+    return f"{emoji} {title}"
 
 
 def request_app_quit(screen: ModalScreen[object]) -> None:
