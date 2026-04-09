@@ -265,10 +265,20 @@ Screen {
     background: $app-surface;
 }
 
+#overview-scroll.dashboard-card-scroll {
+    content-align: center top;
+}
+
 .content-text {
     color: $ui-ink;
     padding: 0 0 1 0;
     background: $app-surface;
+}
+
+#overview-content.dashboard-card {
+    width: 1fr;
+    content-align: center top;
+    text-align: center;
 }
 
 .content-scroll,

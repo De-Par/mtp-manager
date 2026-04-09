@@ -739,6 +739,14 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         secrets_screen = self.state.current_screen == "secrets"
         has_users = bool(self.users_snapshot)
         self._dashboard_snapshot = self.controller.dashboard() if dashboard_mode else None
+        overview_content = self.query_one("#overview-content", Static)
+        overview_scroll = self.query_one("#overview-scroll", VerticalScroll)
+        if dashboard_mode:
+            overview_content.add_class("dashboard-card")
+            overview_scroll.add_class("dashboard-card-scroll")
+        else:
+            overview_content.remove_class("dashboard-card")
+            overview_scroll.remove_class("dashboard-card-scroll")
         self.query_one("#sections-title", Static).update(self._t("sections"))
         self.query_one("#overview-title", Static).update(
             self._t("server_status_panel" if dashboard_mode else "overview")
@@ -762,13 +770,13 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         self.query_one("#secrets-title", Static).update(self._t("secrets"))
         users_empty_state.update(self._t("no_users_yet"))
         if dashboard_mode:
-            self.query_one("#overview-content", Static).update(
+            overview_content.update(
                 render_status_card(self._dashboard_snapshot, self._hardware_snapshot, self._t)
             )
-            self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
+            overview_scroll.scroll_home(animate=False, immediate=True, x_axis=False)
         elif not users_screen:
-            self.query_one("#overview-content", Static).update(render_fields(self._build_overview_text()))
-            self.query_one("#overview-scroll", VerticalScroll).scroll_home(animate=False, immediate=True, x_axis=False)
+            overview_content.update(render_fields(self._build_overview_text()))
+            overview_scroll.scroll_home(animate=False, immediate=True, x_axis=False)
         activity_title = self.state.output_title if self.state.output_body.strip() else self._t("activity")
         activity_body = self.state.output_body or ""
         self.query_one("#activity-title", Static).update(activity_title)
