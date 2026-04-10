@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo.png" alt="mtp-manager dashboard screenshot" width="84%">
+  <img src="https://raw.githubusercontent.com/De-Par/mtp-manager/main/assets/demo.png" alt="mtp-manager screenshot" width="80%">
 </p>
 
 ## Overview
@@ -55,74 +55,9 @@
 
 The diagram below shows the high-level path of an MTProto message when `telemt` is used as the proxy layer with Fake TLS enabled.
 
-```mermaid
-%%{init: {
-  "theme": "base",
-  "themeVariables": {
-    "background": "#FFFFFF",
-    "primaryTextColor": "#111827",
-    "secondaryTextColor": "#111827",
-    "tertiaryTextColor": "#111827",
-    "lineColor": "#111827",
-    "fontSize": "18px",
-    "fontFamily": "Arial, sans-serif"
-  }
-}}%%
-
-flowchart TD
-
-    subgraph MAIN["MTProto over Fake TLS"]
-        direction TB
-
-        subgraph ROW1[" "]
-            direction LR
-            C("Telegram client<br/><br/>• Build request<br/>• Encrypt payload<br/>• Wrap in Fake TLS")
-            N("Network path<br/><br/>• Carry outer flow<br/>• Hide plaintext")
-        end
-
-        subgraph ROW2[" "]
-            direction LR
-            P("telemt proxy<br/><br/>• Accept session<br/>• Validate secret<br/>• Remove disguise<br/>• Forward ciphertext")
-            T("Telegram backend<br/><br/>• Resolve session<br/>• Decrypt packet<br/>• Process message<br/>• Store update")
-        end
-
-        subgraph ROW3[" "]
-            direction LR
-            R("Recipient client<br/><br/>• Receive update<br/>• Decrypt payload<br/>• Render message")
-            D("Delivery status<br/><br/>• Confirm ACK<br/>• Track delivered / read")
-        end
-
-        C ==> N
-        N ==> P
-        P ==> T
-        T ==> R
-        R ==> D
-
-        T -. "server ack" .-> C
-        D -. "delivered / read" .-> C
-    end
-
-    classDef client fill:#DBEAFE,stroke:#1D4ED8,stroke-width:3px,color:#0F172A
-    classDef network fill:#F3E8FF,stroke:#7C3AED,stroke-width:3px,color:#0F172A
-    classDef proxy fill:#FFEDD5,stroke:#EA580C,stroke-width:3px,color:#0F172A
-    classDef core fill:#DCFCE7,stroke:#16A34A,stroke-width:3px,color:#0F172A
-    classDef recipient fill:#FCE7F3,stroke:#DB2777,stroke-width:3px,color:#0F172A
-    classDef delivery fill:#E5E7EB,stroke:#374151,stroke-width:3px,color:#0F172A
-
-    class C client
-    class N network
-    class P proxy
-    class T core
-    class R recipient
-    class D delivery
-
-    style MAIN fill:#FFFFFF,stroke:#111827,stroke-width:4px,color:#111827
-    style ROW1 fill:#FFFFFF,stroke:#FFFFFF
-    style ROW2 fill:#FFFFFF,stroke:#FFFFFF
-    style ROW3 fill:#FFFFFF,stroke:#FFFFFF
-
-    linkStyle default stroke:#111827,stroke-width:3px
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/De-Par/mtp-manager/main/assets/diagram.png" alt="mtproto arch">
+</p>
 
 ## Quick Start
 
