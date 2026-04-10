@@ -28,8 +28,6 @@ from ui.theme import (
     BUTTON_DANGER_HOVER_BORDER,
     BUTTON_DANGER_TEXT,
     BUTTON_FOCUS_BORDER,
-    BUTTON_FLAT_BORDER,
-    BUTTON_FLAT_TEXT,
     BUTTON_HEIGHT,
     BUTTON_SUCCESS_HOVER_BG,
     BUTTON_WARNING_BG,
@@ -54,7 +52,6 @@ from ui.theme import (
     SPLIT_HANDLE_COLOR,
     THEME_CSS_TOKENS,
     UI_ACCENT_INK,
-    UI_BORDER,
     UI_BORDER_ACTIVE,
     UI_INK,
     VIEWER_ACTION_BUTTON_WIDTH,
@@ -77,15 +74,15 @@ WINDOW_TITLE_EMOJI_KEYS = {
     "manage_telemt": "📦",
     "edit_settings": "🔩",
     "language": "🌍",
-    "service_control": "💻",
+    "server": "💻",
     "install_ref_title": "📥",
-    "service_logs_title": "📜",
-    "service_status_title": "📡",
+    "server_logs_title": "📜",
+    "server_status_title": "📡",
     "quit_confirm_title": "🚪",
     "add_user": "👤",
     "add_secret": "🔐",
-    "delete_user_title": "🗑",
-    "delete_secret_title": "🗑",
+    "delete_user_title": "🚮",
+    "delete_secret_title": "🚮",
     "factory_reset": "🚨",
     "export_title": "📤",
     "export": "📤",
@@ -103,7 +100,7 @@ def _build_window_title_emojis() -> dict[str, str]:
 
 
 WINDOW_TITLE_EMOJIS = _build_window_title_emojis()
-TITLE_PREFIX_EMOJIS = set(WINDOW_TITLE_EMOJIS.values()) | {"✨", "👤", "🔐"}
+TITLE_PREFIX_EMOJIS = frozenset(WINDOW_TITLE_EMOJIS.values()) | {"✨", "👤", "🔐"}
 
 
 CSS_REPLACEMENTS = {
@@ -164,8 +161,11 @@ def format_window_title(title: str) -> str:
     title = title.strip()
     if not title:
         return title
-    if title[0] in TITLE_PREFIX_EMOJIS:
-        return f"{title[0]} {title[1:].strip()}"
+    title_parts = title.split(maxsplit=1)
+    if title_parts and title_parts[0] in TITLE_PREFIX_EMOJIS:
+        if len(title_parts) == 1:
+            return title_parts[0]
+        return f"{title_parts[0]} {title_parts[1].strip()}"
     emoji = WINDOW_TITLE_EMOJIS.get(title.casefold(), "✨")
     return f"{emoji} {title}"
 
@@ -674,7 +674,7 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     ActionMenuScreen.-compact-menu .menu-actions-scroll,
-    ServiceMenuScreen.-compact-menu .menu-actions-scroll {
+    ServerMenuScreen.-compact-menu .menu-actions-scroll {
         margin-top: 0;
     }
 
@@ -687,7 +687,7 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     ActionMenuScreen.-compact-menu .menu-button,
-    ServiceMenuScreen.-compact-menu .menu-button {
+    ServerMenuScreen.-compact-menu .menu-button {
         margin-bottom: 0;
     }
 
@@ -857,7 +857,7 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button:focus {
         background: white;
         color: @@FOCUS_INK@@;
         border: round @@UI_BORDER_ACTIVE@@;
@@ -866,8 +866,8 @@ class MenuModalScreen(ModalScreen[str | None]):
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-success:focus,
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-success:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-success:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-success:focus {
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.-success:focus,
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-success:focus {
         background: white;
         color: @@UI_ACCENT_INK@@;
         border: round @@UI_BORDER_ACTIVE@@;
@@ -876,8 +876,8 @@ class MenuModalScreen(ModalScreen[str | None]):
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-warning:focus,
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-warning:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-warning:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-warning:focus {
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.-warning:focus,
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-warning:focus {
         background: white;
         color: @@BUTTON_WARNING_TEXT@@;
         border: round @@BUTTON_WARNING_BORDER@@;
@@ -886,8 +886,8 @@ class MenuModalScreen(ModalScreen[str | None]):
 
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.-error:focus,
     ActionMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-error:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.-error:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-error:focus {
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.-error:focus,
+    ServerMenuScreen.-suppress-initial-highlight Button.menu-button.menu-variant-error:focus {
         background: white;
         color: @@BUTTON_DANGER_TEXT@@;
         border: round @@BUTTON_DANGER_BORDER@@;
@@ -895,7 +895,7 @@ class MenuModalScreen(ModalScreen[str | None]):
     }
 
     ActionMenuScreen.-suppress-initial-highlight Button.dialog-close:focus,
-    ServiceMenuScreen.-suppress-initial-highlight Button.dialog-close:focus {
+    ServerMenuScreen.-suppress-initial-highlight Button.dialog-close:focus {
         background: @@VIEWER_CLOSE_BG@@;
         color: @@VIEWER_FG@@;
         border: round @@VIEWER_CLOSE_BG@@;
@@ -1133,7 +1133,7 @@ class SourceMenuScreen(InlineActionMenuScreen):
         self.dismiss(action)
 
 
-class ServiceMenuScreen(MenuModalScreen):
+class ServerMenuScreen(MenuModalScreen):
     CSS = MenuModalScreen.CSS
     BINDINGS = MenuModalScreen.BINDINGS
 
@@ -1152,11 +1152,11 @@ class ServiceMenuScreen(MenuModalScreen):
         self.open_logs = open_logs
 
     def handle_menu_action(self, action: str) -> None:
-        if action == "service_status":
+        if action == "server_status":
             self._suspend_focus()
             self.open_status()
             return
-        if action == "service_logs":
+        if action == "server_logs":
             self._suspend_focus()
             self.open_logs()
             return
@@ -2209,25 +2209,3 @@ class UserSecretsSplitHandle(Static):
             self.release_mouse()
             self.screen.set_focus(None)
             event.stop()
-
-
-class ModalHeaderClose(Container):
-    can_focus = True
-
-    def compose(self) -> ComposeResult:
-        yield Static("×", id="user-secrets-close-glyph")
-
-    async def _on_mouse_down(self, event: events.MouseDown) -> None:
-        self.focus()
-        event.stop()
-
-    async def _on_click(self, event: events.Click) -> None:
-        event.stop()
-        if hasattr(self.screen, "action_close_dialog"):
-            self.screen.action_close_dialog()
-
-    async def _on_key(self, event: events.Key) -> None:
-        if event.key in {"enter", "space"}:
-            event.stop()
-            if hasattr(self.screen, "action_close_dialog"):
-                self.screen.action_close_dialog()

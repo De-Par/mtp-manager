@@ -403,23 +403,19 @@ class AppController:
             return self._t("install_ref_completed", ref=normalized_ref)
         return self._t("install_latest_completed")
 
-    def run_reinstall_units(self) -> str:
-        self.install_service.reinstall_units(self.script_path)
-        return self._t("units_reinstalled")
-
     def service_start(self) -> str:
         self._ensure_service_can_run()
         self.systemd_service.start()
-        return self._t("service_started")
+        return self._t("server_started")
 
     def service_stop(self) -> str:
         self.systemd_service.stop()
-        return self._t("service_stopped")
+        return self._t("server_stopped")
 
     def service_restart(self) -> str:
         self._ensure_service_can_run()
         self.systemd_service.restart()
-        return self._t("service_restarted")
+        return self._t("server_restarted")
 
     def service_status_text(self) -> str:
         return self.systemd_service.status().strip() or self._t("no_status_available")
@@ -435,7 +431,7 @@ class AppController:
 
     def clear_service_logs(self) -> str:
         self.cleanup_service.clear_service_logs()
-        return self._t("service_logs_cleared")
+        return self._t("server_logs_cleared")
 
     def service_cleanup(self) -> str:
         self.cleanup_service.cleanup_logs()

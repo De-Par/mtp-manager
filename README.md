@@ -147,7 +147,6 @@ mtp-manager
 | `src/app.py` | CLI entrypoint and internal service commands |
 | `src/bootstrap.py` | Dependency wiring and startup migration glue |
 | `src/controller.py` | Application actions used by the TUI |
-| `src/diagnostics/` | focused diagnostic checks for ports, Fake TLS, cloud, and service state |
 | `src/infra/` | shell, locale, storage, firewall, public IP, `systemd` |
 | `src/models/` | typed domain models |
 | `src/services/` | install, runtime, diagnostics, cleanup, inventory |

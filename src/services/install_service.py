@@ -84,6 +84,3 @@ class InstallService:
         self._stop_service_for_binary_update()
         self._install_source_with_fallback("rebuild", settings.telemt_ref)
         self.runtime.reconcile(settings, self.systemd, restart=True)
-
-    def reinstall_units(self, script_path: Path) -> None:
-        self.systemd.write_units(script_path)

@@ -24,7 +24,6 @@ class AppSettings:
     ad_tag: str = ""
     telemt_ref: str = ""
     ui_lang: str = "en"
-    use_managed_swap: bool = False
     source_mode: SourceMode = "fresh"
 
     def validate(self) -> None:
@@ -59,7 +58,6 @@ class AppSettings:
             ad_tag=str(payload.get("ad_tag", "")),
             telemt_ref=str(payload.get("telemt_ref", "")),
             ui_lang=str(payload.get("ui_lang", "en")),
-            use_managed_swap=bool(payload.get("use_managed_swap", False)),
             source_mode=str(payload.get("source_mode", "fresh")),  # type: ignore[arg-type]
         )
         settings.validate()

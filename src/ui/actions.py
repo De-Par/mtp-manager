@@ -12,7 +12,7 @@ ACTION_LABEL_KEYS = {
     "back": "back",
     "more": "more",
     "configure_menu": "configure",
-    "service_menu": "service_control",
+    "server_menu": "server",
     "source_menu": "source",
     "setup": "setup",
     "edit_settings": "edit_settings",
@@ -22,7 +22,6 @@ ACTION_LABEL_KEYS = {
     "update_source": "update_source",
     "rebuild": "rebuild",
     "install_ref": "install_ref",
-    "reinstall_units": "reinstall_units",
     "add_user": "add_user",
     "user_configure": "configure",
     "user_secrets": "secrets",
@@ -36,12 +35,12 @@ ACTION_LABEL_KEYS = {
     "rotate_secret": "rotate_secret",
     "delete_secret": "delete_secret",
     "export_to_file": "export_to_file",
-    "service_start": "start",
-    "service_stop": "stop",
-    "service_restart": "restart",
-    "service_status": "status",
-    "service_logs": "logs",
-    "service_cleanup": "service_cleanup",
+    "server_start": "start",
+    "server_stop": "stop",
+    "server_restart": "restart",
+    "server_status": "status",
+    "server_logs": "logs",
+    "cleanup": "cleanup",
     "cleanup_logs": "cleanup_logs",
     "factory_reset": "factory_reset",
     "quit_app": "quit",
@@ -68,10 +67,21 @@ def translated_actions(
     translate: TranslatorFn,
 ) -> list[ActionSpec]:
     """Return translated copies of action specs for the current locale"""
-    return [ActionSpec(action.key, action_label(action, translate), action.variant, action.classes) for action in actions]
+    return [
+        ActionSpec(
+            action.key,
+            action_label(action, translate),
+            action.variant,
+            action.classes,
+        )
+        for action in actions
+    ]
 
 
-def split_actions(actions: list[ActionSpec], primary_action_limit: int = PRIMARY_ACTION_LIMIT) -> tuple[list[ActionSpec], list[ActionSpec]]:
+def split_actions(
+    actions: list[ActionSpec],
+    primary_action_limit: int = PRIMARY_ACTION_LIMIT,
+) -> tuple[list[ActionSpec], list[ActionSpec]]:
     """Split actions into the visible row and overflow bucket"""
     if len(actions) <= primary_action_limit:
         return actions, []
@@ -87,7 +97,7 @@ def configure_actions() -> list[ActionSpec]:
         ActionSpec("setup", "setup"),
         ActionSpec("edit_settings", "edit_settings"),
         ActionSpec("source_menu", "source_menu"),
-        ActionSpec("service_cleanup", "service_cleanup", "warning"),
+        ActionSpec("cleanup", "cleanup", "warning"),
         ActionSpec("factory_reset", "factory_reset", "error"),
     ]
 
@@ -101,31 +111,25 @@ def source_actions() -> list[ActionSpec]:
     ]
 
 
-def service_actions(service_active: bool) -> list[ActionSpec]:
-    """Actions shown in the Service modal"""
+def server_actions() -> list[ActionSpec]:
+    """Actions shown in the Server modal"""
     return [
-        ActionSpec("service_status", "service_status"),
-        ActionSpec("service_logs", "service_logs"),
-        ActionSpec("service_start", "service_start"),
-        ActionSpec("service_restart", "service_restart"),
-        ActionSpec("service_stop", "service_stop", "error"),
+        ActionSpec("server_status", "server_status"),
+        ActionSpec("server_logs", "server_logs"),
+        ActionSpec("server_start", "server_start"),
+        ActionSpec("server_restart", "server_restart"),
+        ActionSpec("server_stop", "server_stop", "error"),
     ]
 
 
-def primary_screen_actions(current_screen: str, has_history: bool) -> list[ActionSpec]:
+def primary_screen_actions(current_screen: str) -> list[ActionSpec]:
     """Top-level action bar actions for the currently selected workspace"""
-    actions: list[ActionSpec] = []
     if current_screen == "dashboard":
-        return actions
-        
+        return []
     if current_screen == "users":
-        actions.extend(
-            [
-                ActionSpec("add_user", "add_user", "success"),
-                ActionSpec("user_configure", "user_configure"),
-                ActionSpec("delete_user", "delete_user", "error"),
-            ]
-        )
-        return actions
-    actions.append(ActionSpec("clear_activity", "clear_activity"))
-    return actions
+        return [
+            ActionSpec("add_user", "add_user", "success"),
+            ActionSpec("user_configure", "user_configure"),
+            ActionSpec("delete_user", "delete_user", "error"),
+        ]
+    return [ActionSpec("clear_activity", "clear_activity")]

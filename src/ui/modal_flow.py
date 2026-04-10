@@ -7,14 +7,14 @@ from datetime import datetime
 
 from errors import AppError
 from ui.lists import secret_list_items
-from ui.actions import configure_actions, service_actions, source_actions, translated_actions
+from ui.actions import configure_actions, server_actions, source_actions, translated_actions
 from ui.modals import (
     ActionMenuScreen,
     ActionSpec,
     ConfirmScreen,
     FullscreenTextScreen,
     InstallRefScreen,
-    ServiceMenuScreen,
+    ServerMenuScreen,
     SourceMenuScreen,
     TextInputScreen,
     UserConfigureMenuScreen,
@@ -44,75 +44,67 @@ class ModalFlowMixin:
     def _source_actions(self) -> list[ActionSpec]:
         return source_actions()
 
-    def _service_actions(self, service_status: str | None = None) -> list[ActionSpec]:
-        status = service_status or (self._dashboard_snapshot.service_status if self._dashboard_snapshot else None)
-        service_active = (status or self.controller.dashboard().service_status).lower() == "active"
-        return service_actions(service_active)
+    def _server_actions(self) -> list[ActionSpec]:
+        return server_actions()
 
-    def _run_service_cleanup(self) -> str:
+    def _run_cleanup(self) -> str:
         result = self.controller.service_cleanup()
         self._capture_hardware_snapshot()
         return result
 
-    def _run_clear_service_logs(self) -> str:
+    def _run_clear_server_logs(self) -> str:
         result = self.controller.clear_service_logs()
         self._capture_hardware_snapshot()
         return result
 
-    def _service_logs_actions(self) -> list[ActionSpec]:
+    def _server_logs_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("clear_service_logs", self._t("clean", "Clean"), "error", "viewer-danger-action"),
+            ActionSpec("clear_server_logs", self._t("clean", "Clean"), "error", "viewer-danger-action"),
         ]
 
-    def _service_status_actions(self) -> list[ActionSpec]:
+    def _server_status_actions(self) -> list[ActionSpec]:
         return [
-            ActionSpec("copy_service_status", self._t("copy", "Copy")),
+            ActionSpec("copy_server_status", self._t("copy", "Copy")),
         ]
 
-    def _handle_service_status_viewer_action(self, action: str) -> bool:
-        if action != "copy_service_status":
+    def _handle_server_status_viewer_action(self, action: str) -> bool:
+        if action != "copy_server_status":
             return False
         self._copy_text(self.controller.service_status_text())
         self.notify(self._t("copied_to_clipboard", "Copied to clipboard."), severity="information")
         return True
 
-    def _open_service_logs_screen(self) -> None:
+    def _open_server_logs_screen(self) -> None:
         self.push_screen(
             FullscreenTextScreen(
-                self._t("service_logs_title"),
+                self._t("server_logs_title"),
                 self.controller.service_logs_text(),
                 clear_before_close=True,
-                actions=translated_actions(self._service_logs_actions(), self._t),
+                actions=translated_actions(self._server_logs_actions(), self._t),
                 close_label=self._t("close", "Close"),
             ),
-            self._handle_service_logs_modal_result,
+            self._handle_server_logs_modal_result,
         )
 
-    def _open_service_status_screen(self) -> None:
+    def _open_server_status_screen(self) -> None:
         self.push_screen(
             FullscreenTextScreen(
-                self._t("service_status_title"),
+                self._t("server_status_title"),
                 self.controller.service_status_text(),
-                actions=translated_actions(self._service_status_actions(), self._t),
-                action_handler=self._handle_service_status_viewer_action,
+                actions=translated_actions(self._server_status_actions(), self._t),
+                action_handler=self._handle_server_status_viewer_action,
                 close_label=self._t("close", "Close"),
             )
         )
 
-    def _handle_service_logs_modal_result(self, result: str | None) -> None:
-        if result == "clear_service_logs":
-            self._reopen_screen_after_action = "service_logs"
+    def _handle_server_logs_modal_result(self, result: str | None) -> None:
+        if result == "clear_server_logs":
+            self._reopen_screen_after_action = "server_logs"
             self._run_action(
-                self._run_clear_service_logs,
+                self._run_clear_server_logs,
                 busy_label=f"{self._t('cleanup_logs', 'Cleanup logs')}...",
             )
             return
-        if result == "service_cleanup":
-            self._reopen_screen_after_action = "service_logs"
-            self._run_action(
-                self._run_service_cleanup,
-                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
-            )
 
     def _handle_action_menu(self, action: str | None) -> None:
         if action is None:
@@ -133,13 +125,13 @@ class ModalFlowMixin:
         )
 
     def _handle_configure_menu_inline_action(self, action: str) -> bool:
-        if action != "service_cleanup":
+        if action != "cleanup":
             return False
         current_screen = self.screen
         self._reopen_screen_after_action = "configure_menu"
         self._run_action(
-            self._run_service_cleanup,
-            busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
+            self._run_cleanup,
+            busy_label=f"{self._t('cleanup', 'Cleanup')}...",
         )
         if isinstance(current_screen, ActionMenuScreen):
             current_screen.dismiss(CONFIGURE_MENU_HANDLED)
@@ -150,50 +142,42 @@ class ModalFlowMixin:
             return
         self._handle_action_menu(action)
 
-    def _build_service_menu_screen(self) -> ServiceMenuScreen:
-        return ServiceMenuScreen(
-            self._t("service_control"),
-            translated_actions(
-                self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None),
-                self._t,
-            ),
-            open_status=self._open_service_status_screen,
-            open_logs=self._open_service_logs_screen,
-            action_handler=self._handle_service_menu_inline_action,
+    def _build_server_menu_screen(self) -> ServerMenuScreen:
+        return ServerMenuScreen(
+            self._t("server"),
+            translated_actions(self._server_actions(), self._t),
+            open_status=self._open_server_status_screen,
+            open_logs=self._open_server_logs_screen,
+            action_handler=self._handle_server_menu_inline_action,
             close_label=self._t("close", "Close"),
         )
 
-    def _open_service_menu(self) -> None:
-        self.push_screen(self._build_service_menu_screen(), self._handle_service_menu_result)
+    def _open_server_menu(self) -> None:
+        self.push_screen(self._build_server_menu_screen(), self._handle_server_menu_result)
 
-    def _handle_service_menu_inline_action(self, action: str) -> bool:
-        if action == "service_start":
+    def _handle_server_menu_inline_action(self, action: str) -> bool:
+        if action == "server_start":
             self._run_action(self.controller.service_start)
             return True
-        if action == "service_restart":
+        if action == "server_restart":
             self._run_action(self.controller.service_restart)
             return True
-        if action == "service_stop":
+        if action == "server_stop":
             self._run_action(self.controller.service_stop)
             return True
         return False
 
-    def _handle_service_menu_result(self, action: str | None) -> None:
+    def _handle_server_menu_result(self, action: str | None) -> None:
         if action is None:
             self.call_after_refresh(self._restore_default_focus)
             return
         self._handle_ui_action(action)
 
-    def _refresh_open_service_menu(self) -> None:
+    def _refresh_open_server_menu(self) -> None:
         current_screen = self.screen
-        if not isinstance(current_screen, ServiceMenuScreen):
+        if not isinstance(current_screen, ServerMenuScreen):
             return
-        current_screen.update_actions(
-            translated_actions(
-                self._service_actions(self._dashboard_snapshot.service_status if self._dashboard_snapshot else None),
-                self._t,
-            )
-        )
+        current_screen.update_actions(translated_actions(self._server_actions(), self._t))
 
     def _open_install_ref_screen(self) -> None:
         current_ref = self.controller.load_settings().telemt_ref

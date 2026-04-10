@@ -8,12 +8,12 @@ from models.secret import SecretRecord, UserRecord
 LabelTranslateFn = Callable[[str, str | None], str]
 
 SCREEN_ORDER = ["dashboard", "users", "language"]
-SECTION_ORDER = ["dashboard", "configure_menu", "service_menu", "users", "language"]
+SECTION_ORDER = ["dashboard", "configure_menu", "server_menu", "users", "language"]
 
 SCREEN_LABEL_KEYS = {
     "dashboard": "dashboard",
     "configure_menu": "configure",
-    "service_menu": "service_control",
+    "server_menu": "server",
     "users": "users",
     "language": "language",
 }
@@ -21,7 +21,7 @@ SCREEN_LABEL_KEYS = {
 SCREEN_SHORT_LABEL_KEYS = {
     "dashboard": "dashboard",
     "configure_menu": "configure",
-    "service_menu": "service_control",
+    "server_menu": "server",
     "users": "users",
     "language": "language",
 }
@@ -29,7 +29,7 @@ SCREEN_SHORT_LABEL_KEYS = {
 SCREEN_EMOJIS = {
     "dashboard": "📊",
     "configure_menu": "🔧",
-    "service_menu": "💻",
+    "server_menu": "💻",
     "users": "👥",
     "language": "🌍",
 }

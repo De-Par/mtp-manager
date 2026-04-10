@@ -195,28 +195,6 @@ class InventoryService:
         self.save_users(updated_users)
         return changed
 
-    def rotate_all_enabled(self) -> int:
-        users = self.load_users()
-        updated_users: list[UserRecord] = []
-        changed = 0
-        for user in users:
-            updated_secrets = []
-            for secret in user.secrets:
-                if user.enabled and secret.enabled:
-                    updated_secrets.append(
-                        replace(
-                            secret,
-                            raw_secret=self._generate_unique_secret(users, ignore_secret_id=secret.id),
-                            created_at=utc_now(),
-                        )
-                    )
-                    changed += 1
-                else:
-                    updated_secrets.append(secret)
-            updated_users.append(replace(user, secrets=updated_secrets))
-        self.save_users(updated_users)
-        return changed
-
     def delete_secret(self, secret_id: int) -> None:
         users = self.load_users()
         found = False

@@ -46,7 +46,7 @@ from ui.modals import (
     ConfirmScreen,
     InstallRefScreen,
     SettingsScreen,
-    ServiceMenuScreen,
+    ServerMenuScreen,
     TextInputScreen,
     UserConfigureMenuScreen,
     UserSecretsScreen,
@@ -522,7 +522,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             if selected_user is None:
                 return self._t("no_users_yet") + "\n\n" + self._t("use_actions_secrets")
             return self.controller.selected_secret_text(self.state.selected_user, self.state.selected_secret_id)
-        return self._t("service_dashboard_controls")
+        return self._t("dashboard_server_controls")
 
     def _render_busy_bar(self, progress: float) -> Text:
         return ui_feedback.render_busy_bar(progress)
@@ -772,7 +772,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
                     ]
                 )
             return actions
-        return primary_screen_actions(self.state.current_screen, bool(self.screen_history))
+        return primary_screen_actions(self.state.current_screen)
 
     async def refresh_ui(
         self,
@@ -805,7 +805,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             overview_scroll.remove_class("dashboard-card-scroll")
         self.query_one("#sections-title", Static).update(self._t("sections"))
         self.query_one("#overview-title", Static).update(
-            self._t("server_status_panel" if dashboard_mode else "overview")
+            self._t("service_panel" if dashboard_mode else "overview")
         )
         self.query_one("#top-split-handle", SplitHandle).tooltip = self._t(
             "split_resize_hint",
@@ -979,8 +979,8 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         )
 
     def _reopen_followup_screen(self, reopen_after_action: object) -> bool:
-        if reopen_after_action == "service_logs":
-            self.call_after_refresh(self._open_service_logs_screen)
+        if reopen_after_action == "server_logs":
+            self.call_after_refresh(self._open_server_logs_screen)
             return True
         if reopen_after_action == "configure_menu":
             self._open_configure_menu()
@@ -1024,8 +1024,8 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self.run_worker(self.refresh_ui(), exclusive=True)
             if isinstance(self.screen, UserConfigureMenuScreen):
                 self.call_after_refresh(self._refresh_open_user_configure_menu)
-            if isinstance(self.screen, ServiceMenuScreen):
-                self.call_after_refresh(self._refresh_open_service_menu)
+            if isinstance(self.screen, ServerMenuScreen):
+                self.call_after_refresh(self._refresh_open_server_menu)
             self._clear_busy()
             if self._reopen_followup_screen(reopen_after_action):
                 return
@@ -1048,8 +1048,8 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self.run_worker(self.refresh_ui(), exclusive=True)
             if isinstance(self.screen, UserConfigureMenuScreen):
                 self.call_after_refresh(self._refresh_open_user_configure_menu)
-            if isinstance(self.screen, ServiceMenuScreen):
-                self.call_after_refresh(self._refresh_open_service_menu)
+            if isinstance(self.screen, ServerMenuScreen):
+                self.call_after_refresh(self._refresh_open_server_menu)
             self._clear_busy()
             self._reopen_followup_screen(reopen_after_action)
 
@@ -1065,8 +1065,8 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             if screen == "configure_menu":
                 self._open_configure_menu()
                 return
-            if screen == "service_menu":
-                self._open_service_menu()
+            if screen == "server_menu":
+                self._open_server_menu()
                 return
             if screen == "language":
                 self._open_language_menu()
@@ -1093,7 +1093,7 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         list_id = event.list_view.id or ""
         if list_id == "sections-list":
             screen = normalize_screen(str(item.value))
-            if screen in {"configure_menu", "service_menu", "language"}:
+            if screen in {"configure_menu", "server_menu", "language"}:
                 return
             if screen != self.state.current_screen:
                 self._open_screen(screen)
@@ -1193,8 +1193,8 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
         if action == "source_menu":
             self._open_source_menu()
             return
-        if action == "service_menu":
-            self._open_service_menu()
+        if action == "server_menu":
+            self._open_server_menu()
             return
         if action == "more":
             overflow = list(self._secondary_actions.values())
@@ -1372,32 +1372,32 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
                 output_title=self._t("export_file_title"),
             )
             return
-        if action == "service_start":
+        if action == "server_start":
             self._run_action(self.controller.service_start)
             return
-        if action == "service_stop":
+        if action == "server_stop":
             self._run_action(self.controller.service_stop)
             return
-        if action == "service_restart":
+        if action == "server_restart":
             self._run_action(self.controller.service_restart)
             return
-        if action == "service_status":
+        if action == "server_status":
             self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self._open_service_status_screen()
+            self._open_server_status_screen()
             return
-        if action == "service_logs":
+        if action == "server_logs":
             self.state.output_title = self._t("activity")
             self.state.output_body = ""
             self.run_worker(self.refresh_ui(), exclusive=True)
-            self._open_service_logs_screen()
+            self._open_server_logs_screen()
             return
-        if action == "service_cleanup":
+        if action == "cleanup":
             self._reopen_screen_after_action = "configure_menu"
             self._run_action(
-                self._run_service_cleanup,
-                busy_label=f"{self._t('service_cleanup', 'Cleanup')}...",
+                self._run_cleanup,
+                busy_label=f"{self._t('cleanup', 'Cleanup')}...",
             )
             return
         if action == "factory_reset":

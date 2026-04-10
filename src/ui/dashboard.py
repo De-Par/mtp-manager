@@ -151,16 +151,16 @@ def capture_hardware_snapshot() -> list[tuple[str, object]]:
     return snapshot
 
 
-def build_service_metrics(
+def build_server_metrics(
     dashboard: DashboardViewModel,
     translate: StatusTranslateFn,
 ) -> list[tuple[str, object]]:
-    """Build localized service rows for the dashboard card"""
-    service_status = translate(dashboard.service_status.lower().replace("-", "_").replace(" ", "_"))
-    if service_status == dashboard.service_status.lower().replace("-", "_").replace(" ", "_"):
-        service_status = dashboard.service_status
+    """Build localized server rows for the dashboard card"""
+    server_status = translate(dashboard.service_status.lower().replace("-", "_").replace(" ", "_"))
+    if server_status == dashboard.service_status.lower().replace("-", "_").replace(" ", "_"):
+        server_status = dashboard.service_status
     return [
-        (translate("service_status"), service_status),
+        (translate("status"), server_status),
         (translate("public_ip"), dashboard.public_ip),
         (translate("telemt_version"), dashboard.telemt_version),
         (translate("proxy_port"), str(dashboard.mt_port)),
@@ -194,15 +194,15 @@ def render_status_card(
     translate: StatusTranslateFn,
 ) -> Text:
     """Render the rich status card shown on the dashboard screen"""
-    service_metrics = build_service_metrics(dashboard, translate)
+    server_metrics = build_server_metrics(dashboard, translate)
     hardware_metrics = build_hardware_metrics(hardware_snapshot, translate)
-    service_status_label = translate("service_status")
+    status_label = translate("status")
     text = Text(justify="center")
-    _append_metric_lines(text, service_metrics, service_status_label=service_status_label, service_state=dashboard.service_status)
+    _append_metric_lines(text, server_metrics, status_label=status_label, service_state=dashboard.service_status)
     if hardware_metrics:
         text.append("\n")
         _append_section_title(text, translate("hardware"), gap_after=1)
-        _append_metric_lines(text, hardware_metrics, service_status_label=service_status_label, service_state=dashboard.service_status)
+        _append_metric_lines(text, hardware_metrics, status_label=status_label, service_state=dashboard.service_status)
     return text
 
 
@@ -217,7 +217,7 @@ def _append_metric_lines(
     text: Text,
     metrics: list[tuple[str, object]],
     *,
-    service_status_label: str,
+    status_label: str,
     service_state: str,
 ) -> None:
     label_width = max((cell_len(label) for label, _ in metrics), default=0)
@@ -225,7 +225,7 @@ def _append_metric_lines(
     section_width = 0
 
     for label, value in metrics:
-        if label == service_status_label and isinstance(value, str):
+        if label == status_label and isinstance(value, str):
             value_renderable = _status_indicator(value, state=service_state)
         elif isinstance(value, Text):
             value_renderable = value
