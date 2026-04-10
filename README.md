@@ -7,29 +7,35 @@
 </p>
 
 <p align="center">
+  <a href="https://pypi.org/project/mtp-manager/">
+    <img src="https://img.shields.io/pypi/v/mtp-manager?style=flat-square&label=PyPI&color=7C3AED" alt="PyPI">
+  </a>
   <a href="https://docs.python.org/3/">
-    <img src="https://img.shields.io/badge/Python-3.11%2B-1D4ED8?style=flat-square&logoColor=white" alt="Python 3.11+">
+    <img src="https://img.shields.io/badge/Python-3.11%2B-2563EB?style=flat-square&logoColor=white" alt="Python 3.11+">
   </a>
   <a href="https://textual.textualize.io/">
-    <img src="https://img.shields.io/badge/Textual-TUI-15803D?style=flat-square&logoColor=white" alt="Textual TUI">
-  </a>
-  <a href="https://ubuntu.com/server">
-    <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Fedora%20%7C%20Arch-EA580C?style=flat-square&logoColor=white" alt="Debian, Ubuntu, Fedora, or Arch Linux">
+    <img src="https://img.shields.io/badge/Textual-TUI-16A34A?style=flat-square&logoColor=white" alt="Textual TUI">
   </a>
   <a href="https://github.com/telemt/telemt">
-    <img src="https://img.shields.io/badge/Backend-telemt-0F766E?style=flat-square&logoColor=white" alt="telemt backend">
+    <img src="https://img.shields.io/badge/Backend-telemt-DC2626?style=flat-square&logoColor=white" alt="telemt backend">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://ubuntu.com/server">
+    <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Fedora%20%7C%20Arch-D97706?style=flat-square&logoColor=white" alt="Debian, Ubuntu, Fedora, or Arch Linux">
   </a>
 </p>
 
 <p align="center">
   <a href="src/i18n/en.py">
-    <img src="https://img.shields.io/badge/Language-English-7C3AED?style=flat-square&logoColor=white" alt="English UI">
+    <img src="https://img.shields.io/badge/Language-English-175569?style=flat-square&logoColor=white" alt="English UI">
   </a>
   <a href="src/i18n/ru.py">
     <img src="https://img.shields.io/badge/Language-Русский-DB2777?style=flat-square&logoColor=white" alt="Russian UI">
   </a>
   <a href="src/i18n/zh.py">
-    <img src="https://img.shields.io/badge/Language-中文-CA8A04?style=flat-square&logoColor=white" alt="Chinese UI">
+    <img src="https://img.shields.io/badge/Language-中文-0891B2?style=flat-square&logoColor=white" alt="Chinese UI">
   </a>
 </p>
 
@@ -59,7 +65,27 @@ The diagram below shows the high-level path of an MTProto message when `telemt` 
   <img src="https://raw.githubusercontent.com/De-Par/mtp-manager/main/assets/diagram.png" alt="mtproto arch">
 </p>
 
-## Quick Start
+## Installation
+
+### From PyPI
+
+Install the latest published version from PyPI:
+
+```bash
+python3 -m pip install mtp-manager
+```
+
+Run the application:
+
+```bash
+mtp-manager
+```
+
+> `mtp-manager` performs system-level operations such as service management, firewall updates, and cleanup tasks, so it is typically expected to run with root privileges.
+
+### From source
+
+Clone the repository and use the bootstrap script:
 
 ```bash
 source setup.sh
