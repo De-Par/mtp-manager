@@ -92,10 +92,16 @@ Clone the repository and use the bootstrap script:
 
 ```bash
 source setup.sh
-mtp-manager
+sudo "$VIRTUAL_ENV/bin/mtp-manager"
 ```
 
 `setup.sh` is meant to be sourced from `bash` or `zsh`. It prepares `.venv`, installs the project in editable mode, validates the entrypoint, and activates the environment in the current shell.
+
+Run the script as your normal user; it uses `sudo` for system packages. Start the
+TUI with the explicit environment path above so `sudo` uses the installed command.
+If already root, run `mtp-manager` after setup. Cache files left by previous root
+runs are skipped when they cannot be removed. An incomplete `.venv` is repaired,
+and required installation failures return an error without activating it.
 
 ## Requirements
 
