@@ -5,11 +5,14 @@ from pathlib import Path
 import shutil
 import tarfile
 import tempfile
+import tomllib
 import urllib.error
 import urllib.request
 
-from errors import SourceBuildRequiredError
+from errors import ServiceError, SourceBuildRequiredError
 from infra.shell import ShellRunner
+from infra.telemt import supports_web
+from infra.rust import ensure_cargo
 from paths import ProjectPaths
 
 
@@ -21,25 +24,32 @@ class SourceService:
         self.shell = shell
         self.paths = paths
 
-    def install(self, mode: str, ref: str = "", *, allow_build: bool = True) -> Path:
+    def install(self, mode: str, ref: str = "", *, allow_build: bool = True, require_web: bool = False) -> Path:
         normalized_ref = ref.strip()
         if mode == "fresh" and self.paths.mt_dir.exists():
             shutil.rmtree(self.paths.mt_dir)
-        if mode == "reuse" and self.paths.binary_file.exists() and not normalized_ref:
+        if (mode == "reuse" and self.paths.binary_file.exists() and not normalized_ref
+                and (not require_web or supports_web(self.paths.binary_file))):
             return self.paths.binary_file
 
         self._prepare_install_root()
         if not normalized_ref:
             self._install_release_binary()
-            return self.paths.binary_file
-        try:
-            self._install_release_binary(normalized_ref)
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                raise
-            if not allow_build:
-                raise SourceBuildRequiredError(f"telemt ref requires source build: {normalized_ref}") from exc
-            self._build_from_source(normalized_ref)
+            if require_web and not supports_web(self.paths.binary_file):
+                if not allow_build:
+                    raise SourceBuildRequiredError("telemt ref requires source build: main")
+                self._build_from_source("main")
+        else:
+            try:
+                self._install_release_binary(normalized_ref)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404:
+                    raise
+                if not allow_build:
+                    raise SourceBuildRequiredError(f"telemt ref requires source build: {normalized_ref}") from exc
+                self._build_from_source(normalized_ref)
+        if require_web and not supports_web(self.paths.binary_file):
+            raise ServiceError("installed telemt binary lacks WEB support; install a WEB-capable revision such as main")
         return self.paths.binary_file
 
     def _install_release_binary(self, ref: str | None = None) -> Path:
@@ -94,7 +104,12 @@ class SourceService:
             source_root = next((item for item in temp_root.iterdir() if item.is_dir()), None)
             if source_root is None:
                 raise FileNotFoundError(f"failed to extract telemt source for ref: {ref}")
-            self.shell.run(["cargo", "build", "--release"], cwd=source_root)
+            manifest = tomllib.loads((source_root / "Cargo.toml").read_text())
+            cargo, build_env = ensure_cargo(self.shell, self.paths.data_dir / "rust", manifest["package"].get("rust-version", "1.88"))
+            args = [cargo, "build", "--release"]
+            if (source_root / "Cargo.lock").exists():
+                args.append("--locked")
+            self.shell.run(args, cwd=source_root, env=build_env)
             built_binary = source_root / "target" / "release" / self.BIN_NAME
             if not built_binary.exists():
                 raise FileNotFoundError(f"built telemt binary not found for ref: {ref}")

@@ -103,6 +103,7 @@ class SystemdService:
         self.storage.save_text(self.paths.cleanup_service_file, self.render_cleanup_service(script_path))
         self.storage.save_text(self.paths.cleanup_timer_file, self.render_cleanup_timer())
         self.systemd.daemon_reload()
+        self.systemd.enable(self.paths.service_file.name, start=False)
         if enable_timers:
             self.systemd.enable(self.paths.refresh_timer_file.name)
             self.systemd.enable(self.paths.cleanup_timer_file.name)

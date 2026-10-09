@@ -159,16 +159,27 @@ def build_server_metrics(
     server_status = translate(dashboard.service_status.lower().replace("-", "_").replace(" ", "_"))
     if server_status == dashboard.service_status.lower().replace("-", "_").replace(" ", "_"):
         server_status = dashboard.service_status
-    return [
+    rows = [
         (translate("status"), server_status),
         (translate("public_ip"), dashboard.public_ip),
         (translate("telemt_version"), dashboard.telemt_version),
-        (translate("proxy_port"), str(dashboard.mt_port)),
+        (translate("proxy_mode"), translate(f"mode_{dashboard.proxy_mode}")),
         (translate("api_port"), str(dashboard.stats_port)),
-        (translate("fake_tls"), dashboard.fake_tls_domain or Text(translate("none"), style=NONE_TEXT_STYLE)),
         (translate("users_count"), str(dashboard.users_count)),
         (translate("secrets_count"), str(dashboard.secrets_count)),
     ]
+    if dashboard.proxy_mode in {"mtproto", "both"}:
+        rows.extend([
+            (translate("proxy_port"), str(dashboard.mt_port)),
+            (translate("fake_tls"), dashboard.fake_tls_domain or Text(translate("none"), style=NONE_TEXT_STYLE)),
+        ])
+    if dashboard.web_endpoint:
+        rows.extend([
+            (translate("web_endpoint"), dashboard.web_endpoint),
+            (translate("web_port"), str(dashboard.web_port)),
+            (translate("web_https_status"), translate(dashboard.web_https_state.replace("-", "_"))),
+        ])
+    return rows
 
 
 def build_hardware_metrics(

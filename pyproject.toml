@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "textual>=8.2.1,<9",
 ]
-keywords = ["telemt", "mtproto", "telegram", "systemd", "tui", "fake-tls"]
+keywords = ["telemt", "mtproto", "web-proxy", "telegram", "systemd", "tui", "fake-tls"]
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: System Administrators",

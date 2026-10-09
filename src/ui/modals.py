@@ -15,7 +15,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual import events
 from textual.screen import ModalScreen
 from textual.widget import MountError
-from textual.widgets import Button, Input, ListView, Static
+from textual.widgets import Button, Collapsible, Input, ListView, Select, Static
 
 from models.settings import AppSettings
 from ui.theme import (
@@ -70,6 +70,9 @@ from ui.widgets import ValueListItem
 WINDOW_TITLE_EMOJI_KEYS = {
     "actions": "⚡",
     "configure": "🔧",
+    "setup_title": "🛠",
+    "web_frontend": "🌐",
+    "web_logs": "📜",
     "source": "📦",
     "manage_telemt": "📦",
     "edit_settings": "🔩",
@@ -556,23 +559,41 @@ class InstallRefScreen(TextInputScreen):
 
 
 class SettingsScreen(AdaptiveFormDialogMixin, ModalScreen[dict[str, str] | None]):
-    CSS = _css(ConfirmScreen.CSS + FORM_DIALOG_CSS)
+    CSS = _css(ConfirmScreen.CSS + FORM_DIALOG_CSS + """
+        Select { width: 1fr; margin: 0 0 1 0; }
+        #confirm-dialog { max-width: 84; }
+        SelectCurrent { background: @@APP_SURFACE@@; color: $ui-ink; border: solid @@INPUT_BORDER@@; }
+        SelectCurrent.-has-value > #label, SelectCurrent > .arrow { color: $ui-ink; }
+        Select:focus > SelectCurrent { background: @@ACCENT_LIGHT_BG@@; border: solid $ui-border-active; }
+        SelectOverlay { background: @@APP_SURFACE@@; color: $ui-ink; border: solid @@INPUT_BORDER@@; }
+        SelectOverlay > .option-list--option { background: @@APP_SURFACE@@; color: $ui-ink; }
+        SelectOverlay > .option-list--option-highlighted, SelectOverlay > .option-list--option-hover {
+            background: @@ACCENT_LIGHT_BG@@; color: $ui-ink; text-style: bold;
+        }
+        Input { background: @@APP_SURFACE@@; color: $ui-ink; border: solid @@INPUT_BORDER@@; margin: 0 0 1 0; }
+        Input:focus { background: @@ACCENT_LIGHT_BG@@; border: solid $ui-border-active; }
+        .dialog-actions Button { width: auto; min-width: 14; padding: 0 1; }
+        .settings-group { height: auto; }
+        .settings-heading { height: auto; margin-top: 1; color: $ui-accent-ink; text-style: bold; }
+        #setup-help, #web-help { height: auto; color: @@CONTENT_SUBTLE_TEXT@@; margin-bottom: 1; }
+        #form-error { height: auto; color: @@BUTTON_DANGER_TEXT@@; margin-bottom: 1; }
+        #setup-mode-summary { height: auto; color: $ui-accent-ink; text-style: bold; }
+        #web-help { margin-bottom: 0; }
+        Collapsible { background: @@APP_SURFACE@@; border: none; padding: 0; margin-top: 0; }
+        CollapsibleTitle { background: @@APP_SURFACE@@; color: $ui-accent-ink; height: 1; padding: 0; }
+        Collapsible Contents { background: @@APP_SURFACE@@; padding: 0 1; }
+    """)
     BINDINGS = FORM_DIALOG_BINDINGS
 
     def __init__(
-        self,
-        settings: AppSettings,
-        *,
-        title: str = "edit_settings",
-        save_label: str = "save",
-        cancel_label: str = "cancel",
-        mt_port_label: str = "proxy_port",
-        stats_port_label: str = "api_port",
-        workers_label: str = "workers",
-        fake_tls_domain_label: str = "fake_tls_domain",
-        ad_tag_label: str = "ad_tag",
+        self, settings: AppSettings, *, title: str = "edit_settings", save_label: str = "save",
+        cancel_label: str = "cancel", mt_port_label: str = "proxy_port", stats_port_label: str = "api_port",
+        workers_label: str = "workers", fake_tls_domain_label: str = "fake_tls_domain", ad_tag_label: str = "ad_tag",
+        web_labels: dict[str, str] | None = None, setup_mode: bool = False, initial_user: str | None = None,
+        submit_validator: Callable[[dict[str, str]], str | None] | None = None,
     ) -> None:
         super().__init__()
+        self.add_class("settings-form")
         self.settings = settings
         self.title_text = title
         self.save_label = save_label
@@ -582,22 +603,82 @@ class SettingsScreen(AdaptiveFormDialogMixin, ModalScreen[dict[str, str] | None]
         self.workers_label = workers_label
         self.fake_tls_domain_label = fake_tls_domain_label
         self.ad_tag_label = ad_tag_label
+        self.web_labels = web_labels or {}
+        self.proxy_mode = settings.proxy_mode
+        self.setup_mode = setup_mode
+        self.initial_user = initial_user
+        self.submit_validator = submit_validator
+        self._error_text = ""
+        self._setup_step = 1
+
+    def _web_label(self, key: str) -> str:
+        return self.web_labels.get(key, EN_CATALOG.get(key, key))
 
     def _field_labels(self) -> list[str]:
-        return [
-            self.mt_port_label,
-            self.stats_port_label,
-            self.workers_label,
-            self.fake_tls_domain_label,
-            self.ad_tag_label,
-        ]
+        labels = [self._web_label("proxy_mode")]
+        if self.setup_mode:
+            labels.append(self._web_label("setup_help"))
+        if not self.setup_mode and self.proxy_mode in {"mtproto", "both"}:
+            labels.append(self.mt_port_label)
+        if self.proxy_mode in {"web", "both"} and (not self.setup_mode or self._setup_step == 2):
+            labels.extend(self._web_label(key) for key in ("web_help", "web_domain", "web_public_ip"))
+        if self.is_mounted and not self.query_one("#advanced-settings", Collapsible).collapsed:
+            labels.extend([self.stats_port_label, self.workers_label, self.ad_tag_label])
+            if self.initial_user is not None:
+                labels.append(self._web_label("setup_user"))
+            if self.proxy_mode in {"mtproto", "both"}:
+                labels.append(self.fake_tls_domain_label)
+            if self.proxy_mode in {"web", "both"}:
+                labels.extend(self._web_label(key) for key in ("web_frontend_mode", *self._advanced_web_fields()))
+            if self.setup_mode:
+                labels.append(self._web_label("telemt_ref"))
+        return labels
+
+    @staticmethod
+    def _advanced_web_fields() -> tuple[str, ...]:
+        return ("web_port", "web_base_path", "web_decoy_dir")
 
     def _estimated_form_height(self, dialog_width: int) -> int:
         content_width = _form_content_width(dialog_width)
-        return sum(
-            _wrapped_line_count(label, content_width) + BUTTON_HEIGHT + 2
-            for label in self._field_labels()
-        )
+        def field_height(label: str) -> int:
+            return _wrapped_line_count(label, content_width) + BUTTON_HEIGHT + 1
+
+        height = 1  # Advanced settings toggle.
+        if self._error_text:
+            height += _wrapped_line_count(self._error_text, content_width) + 1
+        native = self.proxy_mode in {"mtproto", "both"}
+        web = self.proxy_mode in {"web", "both"}
+        if self.setup_mode and self._setup_step == 2:
+            height += 1  # Selected mode and public ports.
+        else:
+            height += field_height(self._web_label("proxy_mode"))
+            if self.setup_mode:
+                height += _wrapped_line_count(self._web_label("setup_help"), content_width) + 1
+        if native and not self.setup_mode:
+            height += field_height(self.mt_port_label)
+        if web and (not self.setup_mode or self._setup_step == 2):
+            height += _wrapped_line_count(self._web_label("web_help"), content_width)
+            height += sum(field_height(self._web_label(key)) for key in ("web_domain", "web_public_ip"))
+        if self.is_mounted and not self.query_one("#advanced-settings", Collapsible).collapsed:
+            height += sum(field_height(label) for label in (self.stats_port_label, self.workers_label))
+            if self.initial_user is not None:
+                height += field_height(self._web_label("setup_user"))
+            if native:
+                height += sum(field_height(label) for label in (self.fake_tls_domain_label, self.ad_tag_label))
+                if self.setup_mode:
+                    height += field_height(self.mt_port_label)
+            if web:
+                height += sum(field_height(self._web_label(key)) for key in ("web_frontend_mode", *self._advanced_web_fields()))
+            if self.setup_mode:
+                height += field_height(self._web_label("telemt_ref"))
+        return height
+
+    def _layout_metrics(self) -> tuple[int, int]:
+        width, height = _modal_viewport_size(self)
+        dialog_width = min(84, max(28, width - 4))
+        # Title, footer, border and padding consume ten rows. Keep controls
+        # scrollable and the footer visible even on a 48x20 terminal.
+        return dialog_width, min(self._estimated_form_height(dialog_width), max(5, height - 11))
 
     def compose(self) -> ComposeResult:
         dialog_width, form_height = self._layout_metrics()
@@ -608,40 +689,140 @@ class SettingsScreen(AdaptiveFormDialogMixin, ModalScreen[dict[str, str] | None]
                 with VerticalScroll(classes="form-scroll") as scroll:
                     scroll.styles.height = form_height
                     with Vertical(classes="form-body"):
-                        yield Static(self.mt_port_label, classes="form-label")
-                        yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
-                        yield Static(self.stats_port_label, classes="form-label")
-                        yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
-                        yield Static(self.workers_label, classes="form-label")
-                        yield Input(str(self.settings.workers), id="workers", type="integer")
-                        yield Static(self.fake_tls_domain_label, classes="form-label")
-                        yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
-                        yield Static(self.ad_tag_label, classes="form-label")
-                        yield Input(self.settings.ad_tag, id="ad_tag")
+                        yield Static("", id="form-error", markup=False)
+                        if self.setup_mode:
+                            yield Static(self._web_label("setup_help"), id="setup-help", markup=False)
+                        yield Static(self._web_label("proxy_mode"), id="settings-mode-label", classes="form-label")
+                        yield Select([(self._web_label(f"mode_{mode}"), mode) for mode in ("mtproto", "web", "both")],
+                                     value=self.settings.proxy_mode, allow_blank=False, id="proxy_mode")
+                        yield Static("", id="setup-mode-summary")
+                        if not self.setup_mode:
+                            with Vertical(id="mtproto-fields", classes="settings-group"):
+                                yield Static(self.mt_port_label, classes="form-label")
+                                yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
+                        with Vertical(id="web-fields", classes="settings-group"):
+                            yield Static(self._web_label("web_help"), id="web-help", markup=False)
+                            for key in ("web_domain", "web_public_ip"):
+                                yield Static(self._web_label(key), classes="form-label")
+                                yield Input(str(getattr(self.settings, key)), id=key)
+                        with Collapsible(title=self._web_label("advanced_settings"), id="advanced-settings", collapsed=True):
+                            if self.initial_user is not None:
+                                yield Static(self._web_label("setup_user"), classes="form-label")
+                                yield Input(self.initial_user, id="initial_user")
+                            if self.setup_mode:
+                                with Vertical(id="mtproto-fields", classes="settings-group"):
+                                    yield Static(self.mt_port_label, classes="form-label")
+                                    yield Input(str(self.settings.mt_port), id="mt_port", type="integer")
+                            yield Static(self.stats_port_label, classes="form-label")
+                            yield Input(str(self.settings.stats_port), id="stats_port", type="integer")
+                            yield Static(self.workers_label, classes="form-label")
+                            yield Input(str(self.settings.workers), id="workers", type="integer")
+                            with Vertical(id="mtproto-advanced", classes="settings-group"):
+                                yield Static(self.fake_tls_domain_label, classes="form-label")
+                                yield Input(self.settings.fake_tls_domain, id="fake_tls_domain")
+                                yield Static(self.ad_tag_label, classes="form-label")
+                                yield Input(self.settings.ad_tag, id="ad_tag")
+                            with Vertical(id="web-advanced", classes="settings-group"):
+                                yield Static(self._web_label("web_frontend_mode"), classes="form-label")
+                                yield Select([(self._web_label("web_auto"), "caddy"), (self._web_label("web_external"), "external")],
+                                             value=self.settings.web_frontend, allow_blank=False, id="web_frontend")
+                                for key in self._advanced_web_fields():
+                                    yield Static(self._web_label(key), classes="form-label")
+                                    yield Input(str(getattr(self.settings, key)), id=key,
+                                                type="integer" if key == "web_port" else "text")
+                            if self.setup_mode:
+                                yield Static(self._web_label("telemt_ref"), classes="form-label")
+                                yield Input(self.settings.telemt_ref, id="telemt_ref")
                 with Horizontal(classes="dialog-actions"):
                     yield Button(self.cancel_label, id="cancel")
                     yield Button(self.save_label, id="save", variant="success")
 
+    def _payload(self) -> dict[str, str]:
+        values = {key: self.query_one(f"#{key}", Input).value.strip() for key in (
+            "mt_port", "stats_port", "workers", "fake_tls_domain", "ad_tag", "web_domain", "web_public_ip",
+            *self._advanced_web_fields(),
+        )}
+        values["proxy_mode"] = str(self.query_one("#proxy_mode", Select).value)
+        values["web_frontend"] = str(self.query_one("#web_frontend", Select).value)
+        if self.initial_user is not None:
+            values["initial_user"] = self.query_one("#initial_user", Input).value.strip()
+        if self.setup_mode:
+            values["telemt_ref"] = self.query_one("#telemt_ref", Input).value.strip()
+        return values
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
+            if self.setup_mode and self._setup_step == 2:
+                self._setup_step = 1
+                self._update_mode()
+                self._apply_form_layout()
+                self.query_one("#proxy_mode", Select).focus()
+                return
             self.dismiss(None)
-            return
-        self.dismiss(
-            {
-                "mt_port": self.query_one("#mt_port", Input).value.strip(),
-                "stats_port": self.query_one("#stats_port", Input).value.strip(),
-                "workers": self.query_one("#workers", Input).value.strip(),
-                "fake_tls_domain": self.query_one("#fake_tls_domain", Input).value.strip(),
-                "ad_tag": self.query_one("#ad_tag", Input).value.strip(),
-            }
-        )
+        elif event.button.id == "save":
+            if self.setup_mode and self._setup_step == 1 and self.proxy_mode in {"web", "both"}:
+                self._setup_step = 2
+                self._update_mode()
+                self._apply_form_layout()
+                self.call_after_refresh(lambda: self.query_one("#web_domain", Input).focus())
+                return
+            values = self._payload()
+            error = self.submit_validator(values) if self.submit_validator else None
+            if error:
+                self._error_text = error
+                error_widget = self.query_one("#form-error", Static)
+                error_widget.update(error)
+                error_widget.display = True
+                self.query_one(".form-scroll", VerticalScroll).scroll_home(animate=False)
+                self._apply_form_layout()
+                return
+            self.dismiss(values)
 
     def on_mount(self) -> None:
+        self.query_one("#form-error", Static).display = False
+        self._update_mode()
         self._apply_form_layout()
-        self.query_one("#mt_port", Input).focus()
+        self.query_one("#proxy_mode", Select).focus()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "proxy_mode" and self.is_mounted:
+            self.proxy_mode = str(event.value)
+            if self.proxy_mode == "both" and self.query_one("#mt_port", Input).value == "443":
+                occupied = {self.query_one("#stats_port", Input).value, self.query_one("#web_port", Input).value}
+                self.query_one("#mt_port", Input).value = next(port for port in ("8443", "9443", "10443") if port not in occupied)
+            self._update_mode()
+            self._apply_form_layout()
+
+    def on_collapsible_toggled(self, event: Collapsible.Toggled) -> None:
+        self._apply_form_layout()
+
+    def _update_mode(self) -> None:
+        web = self.proxy_mode in {"web", "both"}
+        native = self.proxy_mode in {"mtproto", "both"}
+        self.query_one("#web-fields", Vertical).display = web and (not self.setup_mode or self._setup_step == 2)
+        self.query_one("#web-advanced", Vertical).display = web
+        for key in ("mtproto-fields", "mtproto-advanced"):
+            self.query_one(f"#{key}", Vertical).display = native
+        for key in ("mt_port", "fake_tls_domain", "ad_tag"):
+            self.query_one(f"#{key}", Input).disabled = not native
+        second_step = self.setup_mode and self._setup_step == 2
+        self.query_one("#proxy_mode", Select).display = not second_step
+        self.query_one("#settings-mode-label", Static).display = not second_step
+        summary = self.query_one("#setup-mode-summary", Static)
+        summary.display = second_step
+        summary.update(f"MTProto: {self.query_one('#mt_port', Input).value} · WEB: 443" if self.proxy_mode == "both" else "WEB · HTTPS: 443")
+        if self.setup_mode:
+            self.query_one("#setup-help", Static).display = not second_step
+            self.query_one("#cancel", Button).label = self._web_label("back") if second_step else self.cancel_label
+            self.query_one("#save", Button).label = self._web_label("next") if web and not second_step else self.save_label
 
     def on_resize(self, event: events.Resize) -> None:
         self._apply_form_layout()
+
+
+class SetupScreen(SettingsScreen):
+    def __init__(self, settings: AppSettings, *, initial_user: str = "default", needs_secret: bool = True, **kwargs: object) -> None:
+        super().__init__(settings, setup_mode=True, initial_user=initial_user if needs_secret else None, **kwargs)
 
 
 class MenuModalScreen(ModalScreen[str | None]):
@@ -1416,6 +1597,7 @@ class InlineCopyAction(Static):
 
 
 class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
+    LINK_ROW_COUNT = 5
     MIN_LIST_WIDTH = 20
     MIN_DETAIL_WIDTH = 28
 
@@ -1788,7 +1970,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
                                 yield Static("", id="user-secrets-detail-credentials", classes="user-secrets-detail-section-body")
                                 yield Static(self.links_title, classes="user-secrets-detail-section-title after-section")
                                 with Vertical(id="user-secrets-detail-links"):
-                                    for index in range(3):
+                                    for index in range(self.LINK_ROW_COUNT):
                                         with Horizontal(classes="user-secrets-link-row"):
                                             yield Static("", id=f"user-secrets-link-label-{index}", classes="user-secrets-link-label")
                                             yield InlineCopyAction(widget_id=f"user-secrets-link-copy-tg-{index}")
@@ -1918,7 +2100,8 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
 
     def _clear_links(self) -> None:
         self._link_targets.clear()
-        for index in range(3):
+        for index in range(self.LINK_ROW_COUNT):
+            self.query_one(f"#user-secrets-link-label-{index}", Static).parent.display = False
             label = self.query_one(f"#user-secrets-link-label-{index}", Static)
             tg_button = self.query_one(f"#user-secrets-link-copy-tg-{index}", InlineCopyAction)
             tme_button = self.query_one(f"#user-secrets-link-copy-tme-{index}", InlineCopyAction)
@@ -1935,8 +2118,9 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
         label_width = max((cell_len(link_label) for link_label, _, _ in links), default=0) + 2
         row_width = self._link_row_width(label_width, links)
         link_rows = list(self.query(".user-secrets-link-row"))
-        for index in range(3):
+        for index in range(self.LINK_ROW_COUNT):
             row = link_rows[index]
+            row.display = index < len(links)
             label = self.query_one(f"#user-secrets-link-label-{index}", Static)
             tg_button = self.query_one(f"#user-secrets-link-copy-tg-{index}", InlineCopyAction)
             tme_button = self.query_one(f"#user-secrets-link-copy-tme-{index}", InlineCopyAction)
@@ -1954,7 +2138,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
             link_label, tg_link, tme_link = links[index]
             label.update(f"{link_label} :")
             tg_button.display = True
-            tme_button.display = True
+            tme_button.display = bool(tme_link)
             ee_disabled = link_label == "EE" and not tg_link and not tme_link
             if ee_disabled:
                 tg_button.update(Text(self.none_text, style=BUTTON_DANGER_TEXT))
@@ -1981,7 +2165,7 @@ class UserSecretsScreen(ModalScreen[tuple[str, int | None]]):
             if ee_none:
                 content_width = 1 + cell_len(self.none_text)
             else:
-                content_width = 1 + cell_len("[tg]") + 1 + cell_len("[t.me]")
+                content_width = (1 + cell_len("[tg]") if tg_link else 0) + (1 + cell_len("[t.me]") if tme_link else 0)
             row_width = max(row_width, label_width + content_width)
         return row_width
 

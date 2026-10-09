@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from collections.abc import Callable
 from pathlib import Path
 
-from errors import AppError
+from errors import AppError, ValidationError
 from i18n import Translator
 from models.export import ExportBundle
 from models.health import HealthReport
@@ -11,6 +12,7 @@ from models.secret import SecretRecord, UserRecord
 from models.settings import AppSettings
 from paths import ProjectPaths
 from services import CleanupService, DiagnosticsService, ExportService, InstallService, InventoryService, ProxyRuntimeService, SettingsService, SystemdService
+from services.https_service import HttpsService
 
 
 @dataclass(slots=True)
@@ -24,6 +26,10 @@ class DashboardViewModel:
     fake_tls_domain: str
     users_count: int
     secrets_count: int
+    proxy_mode: str = "mtproto"
+    web_endpoint: str = ""
+    web_port: int = 18080
+    web_https_state: str = "disabled"
 
 
 class AppController:
@@ -39,6 +45,7 @@ class AppController:
         runtime_service: ProxyRuntimeService,
         systemd_service: SystemdService,
         paths: ProjectPaths,
+        https_service: HttpsService | None = None,
     ) -> None:
         self.translator = translator
         self.settings_service = settings_service
@@ -50,6 +57,7 @@ class AppController:
         self.runtime_service = runtime_service
         self.systemd_service = systemd_service
         self.paths = paths
+        self.https_service = https_service
 
     def _t(self, key: str, default: str | None = None, **kwargs: object) -> str:
         translated = self.translator.tr(key, **kwargs)
@@ -108,6 +116,31 @@ class AppController:
             return self._t("telemt_ref_invalid")
         if message == "source_mode is invalid":
             return self._t("source_mode_invalid")
+        web_errors = {
+            "proxy_mode is invalid": "proxy_mode_invalid",
+            "web_domain must be a lowercase domain name": "web_domain_invalid",
+            "web_public_ip must be a public IP address": "web_public_ip_invalid",
+            "WEB ports conflict; use distinct MTProto, API, WEB listener ports and reserve 443 for HTTPS": "web_ports_conflict",
+            "web_base_path must contain slash-separated ASCII segments without leading or trailing slash (max 128 characters)": "web_base_path_invalid",
+            "web_decoy_dir must be an absolute directory path": "web_decoy_dir_invalid",
+            "web_decoy_dir must be a real directory containing index.html": "web_decoy_missing",
+            "installed telemt binary lacks WEB support; install a WEB-capable revision such as main": "web_binary_unsupported",
+        }
+        if message in web_errors:
+            return self._t(web_errors[message])
+        if message in {"web_dns_unresolved", "web_dns_mismatch", "web_caddy_checksum_failed", "web_caddy_binary_missing",
+                       "web_https_failed", "web_https_pending", "rust_toolchain_checksum_failed", "rust_toolchain_too_old", "setup_runtime_failed"}:
+            return self._t(message)
+        if message.startswith("web_port_in_use:"):
+            return self._t("web_port_in_use", port=message.split(":", 1)[1])
+        if message.startswith("setup_port_in_use:"):
+            return self._t("setup_port_in_use", port=message.split(":", 1)[1])
+        if message == "web_frontend is invalid":
+            return self._t("web_frontend_invalid")
+        if message == "this action requires root":
+            return self._t("root_required")
+        if message.startswith("web_port must be in range "):
+            return self._t("port_out_of_range", field=self._t("web_port"), min=1, max=65535)
         if message == "Enable at least one secret before starting the service.":
             return self._t("enable_secret_before_start")
         if message == "Run Setup or Apply Changes before starting the service.":
@@ -139,6 +172,13 @@ class AppController:
         ad_tag: str | None = None,
         telemt_ref: str | None = None,
         ui_lang: str | None = None,
+        proxy_mode: str | None = None,
+        web_domain: str | None = None,
+        web_public_ip: str | None = None,
+        web_port: int | None = None,
+        web_base_path: str | None = None,
+        web_decoy_dir: str | None = None,
+        web_frontend: str | None = None,
     ) -> AppSettings:
         current = self.load_settings()
         changes: dict[str, object] = {}
@@ -156,10 +196,51 @@ class AppController:
             changes["telemt_ref"] = telemt_ref.strip()
         if ui_lang is not None:
             changes["ui_lang"] = ui_lang.strip().lower()
+        for field_name, value in (
+            ("proxy_mode", proxy_mode), ("web_domain", web_domain), ("web_public_ip", web_public_ip),
+            ("web_base_path", web_base_path), ("web_decoy_dir", web_decoy_dir),
+            ("web_frontend", web_frontend),
+        ):
+            if value is not None:
+                changes[field_name] = value.strip().lower() if field_name in {"proxy_mode", "web_domain"} else value.strip()
+        if web_port is not None:
+            changes["web_port"] = web_port
         updated = self.settings_service.update(**changes)
         if updated.ui_lang != current.ui_lang:
             self.translator.set_lang(updated.ui_lang)
         return updated
+
+    def settings_from_form(self, payload: dict[str, str]) -> AppSettings:
+        changes: dict[str, object] = {}
+        web = payload.get("proxy_mode") in {"web", "both"}
+        native = payload.get("proxy_mode") in {"mtproto", "both"}
+        for key, label in (("mt_port", "proxy_port"), ("stats_port", "api_port"), ("workers", "workers"), ("web_port", "web_port")):
+            if (key == "mt_port" and not native) or (key == "web_port" and not web):
+                continue
+            try:
+                changes[key] = int(payload[key])
+            except ValueError as exc:
+                raise ValidationError(self._t("invalid_integer_field", field=self._t(label))) from exc
+        for key in ("fake_tls_domain", "ad_tag", "proxy_mode", "web_domain", "web_public_ip", "web_base_path", "web_decoy_dir", "web_frontend", "telemt_ref"):
+            if key in {"fake_tls_domain", "ad_tag"} and not native:
+                continue
+            if key in payload:
+                value = payload[key].strip()
+                changes[key] = value.lower() if key in {"proxy_mode", "web_domain", "web_frontend"} else value
+        settings = replace(self.load_settings(), **changes)
+        settings.validate()
+        self.runtime_service.web.validate_decoy(settings)
+        return settings
+
+    def apply_form_settings(self, settings: AppSettings) -> AppSettings:
+        # Enabling WEB on an installed native proxy provisions its dependencies
+        # and upgrades an older binary in the same TUI action.
+        if (settings.web_enabled and settings.web_frontend == "caddy" and self.https_service
+                and self.systemd_service.is_installed() and not self.https_service.is_installed()):
+            self.setup_from_form(settings)
+            return settings
+        return self.update_settings(**{key: value for key, value in settings.to_dict().items()
+                                      if key not in {"source_mode"}})
 
     def dashboard(self) -> DashboardViewModel:
         settings = self.load_settings()
@@ -183,6 +264,10 @@ class AppController:
             fake_tls_domain=settings.fake_tls_domain,
             users_count=len(users),
             secrets_count=sum(len(user.secrets) for user in users),
+            proxy_mode=settings.proxy_mode,
+            web_endpoint=settings.web_endpoint if settings.web_enabled else "",
+            web_port=settings.web_port,
+            web_https_state=self.https_service.state(settings) if self.https_service else "web_external",
         )
 
     def diagnostics(self) -> HealthReport:
@@ -253,11 +338,9 @@ class AppController:
         report = self.diagnostics_service.build_report(settings)
         host = next((check.value for check in report.checks if check.key == "public_ip"), "") or "<public-ip>"
         bundle = self.export_service.build_bundle(host, settings, user, secret)
-        lines.extend(
-            [
-                "",
-                self._t("links"),
-                f"DD: {bundle.links.padded_secret}",
+        if settings.mtproto_enabled:
+            lines.extend([
+                "", self._t("links"), f"DD: {bundle.links.padded_secret}",
                 f"EE: {bundle.links.fake_tls_secret or self._t('disabled')}",
                 f"{self._t('tg_raw')}: {bundle.links.tg_raw}",
                 f"{self._t('tme_raw')}: {bundle.links.tme_raw}",
@@ -265,8 +348,12 @@ class AppController:
                 f"{self._t('tme_dd')}: {bundle.links.tme_padded}",
                 f"{self._t('tg_ee')}: {bundle.links.tg_fake_tls or self._t('disabled')}",
                 f"{self._t('tme_ee')}: {bundle.links.tme_fake_tls or self._t('disabled')}",
-            ]
-        )
+            ])
+        if settings.web_enabled:
+            lines.extend([
+                "", f"{self._t('web_endpoint')}: {bundle.web_endpoint}",
+                f"WEB raw: {bundle.links.tg_web_raw}", f"WEB DD: {bundle.links.tg_web_padded}",
+            ])
         return "\n".join(lines)
 
     def add_user(self, user_name: str) -> UserRecord:
@@ -382,6 +469,28 @@ class AppController:
         self.install_service.initial_setup(settings, self.script_path, SetupOptions(source_mode=source_mode))
         return self._t("setup_completed")
 
+    def setup_from_form(self, settings: AppSettings, *, initial_user: str = "default", progress: Callable[[str], None] | None = None) -> str:
+        from services.install_service import SetupOptions
+
+        settings.validate()
+        self.install_service.preflight(settings)
+        needs_secret = self.inventory_service.enabled_secret_count() == 0
+        if needs_secret:
+            UserRecord(initial_user.strip()).validate()
+        source_mode = "update" if self.systemd_service.is_installed() else "fresh"
+        self.save_settings(settings)
+        if needs_secret:
+            user_name = initial_user.strip()
+            if self.get_user(user_name) is None:
+                self.inventory_service.add_user(user_name)
+            self.inventory_service.set_user_enabled(user_name, True)
+            self.inventory_service.add_secret(user_name)
+        self.install_service.initial_setup(settings, self.script_path, SetupOptions(source_mode=source_mode, progress=progress))
+        selected = initial_user.strip() if needs_secret else next(user.name for user in self.list_users() if user.enabled and any(secret.enabled for secret in user.secrets))
+        enabled_bundles = [bundle for bundle in self.export_for_user(selected)
+                           if (secret := self.get_secret(bundle.secret_id)) is not None and secret.enabled]
+        return self._t("setup_ready") + "\n\n" + self.export_service.render_bundles(enabled_bundles, self._t)
+
     def run_update(self, *, source_mode: str = "update") -> str:
         self.install_service.update_source(self.load_settings(), self.script_path, source_mode=source_mode)
         return self._t("update_completed")
@@ -406,15 +515,21 @@ class AppController:
     def service_start(self) -> str:
         self._ensure_service_can_run()
         self.systemd_service.start()
+        if self.https_service:
+            self.https_service.activate(self.load_settings())
         return self._t("server_started")
 
     def service_stop(self) -> str:
+        if self.https_service:
+            self.https_service.stop()
         self.systemd_service.stop()
         return self._t("server_stopped")
 
     def service_restart(self) -> str:
         self._ensure_service_can_run()
         self.systemd_service.restart()
+        if self.https_service:
+            self.https_service.activate(self.load_settings())
         return self._t("server_restarted")
 
     def service_status_text(self) -> str:
@@ -428,6 +543,24 @@ class AppController:
 
     def service_unit_preview(self) -> str:
         return self.systemd_service.preview().strip() or self._t("no_unit_preview_available")
+
+    def web_frontend_preview(self) -> str:
+        settings = self.load_settings()
+        if not settings.web_enabled:
+            return self._t("web_disabled_hint")
+        if settings.web_frontend == "caddy":
+            state = self.https_service.state(settings) if self.https_service else "not-installed"
+            return "\n\n".join([
+                self._t("web_managed_info"), f"{self._t('web_endpoint')}: {settings.web_endpoint}",
+                f"HTTPS: {self._human_state(state)}",
+            ])
+        web = self.runtime_service.web
+        return "\n\n".join([
+            self._t("web_frontend_help"),
+            f"{self._t('web_endpoint')}: {settings.web_endpoint}",
+            f"NGINX ({self.paths.web_nginx_file}):\n{web.render_nginx(settings)}",
+            f"Caddy ({self.paths.web_caddy_file}):\n{web.render_caddy(settings)}",
+        ])
 
     def clear_service_logs(self) -> str:
         self.cleanup_service.clear_service_logs()

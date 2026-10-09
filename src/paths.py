@@ -67,6 +67,42 @@ class ProjectPaths:
         return self.mt_dir / "tlsfront"
 
     @property
+    def web_decoy_dir(self) -> Path:
+        return self.data_dir / "web-public"
+
+    @property
+    def web_nginx_file(self) -> Path:
+        return self.conf_dir / "web-nginx.conf.example"
+
+    @property
+    def web_caddy_file(self) -> Path:
+        return self.conf_dir / "web-Caddyfile.example"
+
+    @property
+    def web_service_file(self) -> Path:
+        return self.service_file.with_name("mtp-manager-web.service")
+
+    @property
+    def caddy_dir(self) -> Path:
+        return self.mt_dir.parent / "mtp-manager-caddy"
+
+    @property
+    def caddy_binary(self) -> Path:
+        return self.caddy_dir / "caddy"
+
+    @property
+    def caddy_config_file(self) -> Path:
+        return self.conf_dir / "Caddyfile"
+
+    @property
+    def caddy_data_dir(self) -> Path:
+        return self.data_dir / "caddy"
+
+    @property
+    def web_state_file(self) -> Path:
+        return self.data_dir / "web-https.json"
+
+    @property
     def managed_swap_marker(self) -> Path:
         return self.data_dir / "managed_swap_1g"
 
@@ -132,6 +168,7 @@ class ProjectPaths:
             self.refresh_timer_file.name,
             self.cleanup_service_file.name,
             self.cleanup_timer_file.name,
+            self.web_service_file.name,
         )
 
     @property

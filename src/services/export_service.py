@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from collections.abc import Callable
+import base64
+from urllib.parse import urlencode
 
 from models.export import ExportBundle, ExportLinkSet
 from models.secret import SecretRecord, UserRecord
@@ -27,27 +29,40 @@ class ExportService:
     def tme_link(host: str, port: int, secret: str) -> str:
         return f"https://t.me/proxy?server={host}&port={port}&secret={secret}"
 
+    @staticmethod
+    def web_link(domain: str, secret: str, base_path: str = "") -> str:
+        server = domain
+        if base_path:
+            server += f"/{base_path}"
+            secret = base64.urlsafe_b64encode(b"\x70" + bytes.fromhex(secret)).decode("ascii").rstrip("=")
+        return "tg://webproxy?" + urlencode({"server": server, "secret": secret})
+
     def build_bundle(self, host: str, settings: AppSettings, user: UserRecord, secret: SecretRecord) -> ExportBundle:
+        settings.validate()
         raw = secret.raw_secret
         padded = self.padded_secret(raw)
-        fake = self.fake_tls_secret(raw, settings.fake_tls_domain) if settings.fake_tls_domain else None
+        native = settings.mtproto_enabled
+        fake = self.fake_tls_secret(raw, settings.fake_tls_domain) if native and settings.fake_tls_domain else None
         return ExportBundle(
-            host=host,
-            port=settings.mt_port,
+            host=host if native else settings.web_domain,
+            port=settings.mt_port if native else 443,
             user=user.name,
             secret_id=secret.id,
             note=secret.note,
-            endpoint=f"{host}:{settings.mt_port}",
+            endpoint=f"{host}:{settings.mt_port}" if native else settings.web_endpoint,
+            web_endpoint=settings.web_endpoint if settings.web_enabled else None,
             links=ExportLinkSet(
                 raw_secret=raw,
                 padded_secret=padded,
                 fake_tls_secret=fake,
-                tg_raw=self.tg_link(host, settings.mt_port, raw),
-                tg_padded=self.tg_link(host, settings.mt_port, padded),
+                tg_raw=self.tg_link(host, settings.mt_port, raw) if native else None,
+                tg_padded=self.tg_link(host, settings.mt_port, padded) if native else None,
                 tg_fake_tls=self.tg_link(host, settings.mt_port, fake) if fake else None,
-                tme_raw=self.tme_link(host, settings.mt_port, raw),
-                tme_padded=self.tme_link(host, settings.mt_port, padded),
+                tme_raw=self.tme_link(host, settings.mt_port, raw) if native else None,
+                tme_padded=self.tme_link(host, settings.mt_port, padded) if native else None,
                 tme_fake_tls=self.tme_link(host, settings.mt_port, fake) if fake else None,
+                tg_web_raw=self.web_link(settings.web_domain, raw, settings.web_base_path) if settings.web_enabled else None,
+                tg_web_padded=self.web_link(settings.web_domain, padded, settings.web_base_path) if settings.web_enabled else None,
             ),
         )
 
@@ -65,6 +80,10 @@ class ExportService:
                     f"{tr('endpoint', 'Endpoint')}: {bundle.endpoint}",
                     f"{tr('raw_secret', 'Raw')}: {bundle.links.raw_secret}",
                     f"DD: {bundle.links.padded_secret}",
+                ]
+            )
+            if bundle.links.tg_raw:
+                lines.extend([
                     f"EE: {bundle.links.fake_tls_secret or tr('disabled', 'disabled')}",
                     f"{tr('tg_raw', 'tg raw')}: {bundle.links.tg_raw}",
                     f"{tr('tme_raw', 't.me raw')}: {bundle.links.tme_raw}",
@@ -72,9 +91,14 @@ class ExportService:
                     f"{tr('tme_dd', 't.me dd')}: {bundle.links.tme_padded}",
                     f"{tr('tg_ee', 'tg ee')}: {bundle.links.tg_fake_tls or tr('disabled', 'disabled')}",
                     f"{tr('tme_ee', 't.me ee')}: {bundle.links.tme_fake_tls or tr('disabled', 'disabled')}",
-                    "",
-                ]
-            )
+                ])
+            if bundle.links.tg_web_raw:
+                lines.extend([
+                    f"{tr('web_endpoint', 'WEB endpoint')}: {bundle.web_endpoint}",
+                    f"WEB raw: {bundle.links.tg_web_raw}",
+                    f"WEB DD: {bundle.links.tg_web_padded}",
+                ])
+            lines.append("")
         return "\n".join(lines).strip()
 
     def export_bundles_to_file(self, bundles: list[ExportBundle], path: Path) -> Path:

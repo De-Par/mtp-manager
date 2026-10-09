@@ -70,6 +70,7 @@ class CleanupService:
             self.paths.lock_file,
             self.paths.legacy_lock_file,
             self.paths.service_file,
+            self.paths.web_service_file,
             self.paths.refresh_service_file,
             self.paths.refresh_timer_file,
             self.paths.cleanup_service_file,
@@ -101,6 +102,8 @@ class CleanupService:
                 shutil.rmtree(directory)
         if self.paths.mt_dir.exists():
             shutil.rmtree(self.paths.mt_dir)
+        if self.paths.caddy_dir.exists():
+            shutil.rmtree(self.paths.caddy_dir)
         if self.paths.legacy_mt_dir.exists():
             shutil.rmtree(self.paths.legacy_mt_dir)
         install_path = self.paths.self_install_path

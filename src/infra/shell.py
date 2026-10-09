@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from errors import ShellError
 
@@ -23,12 +23,14 @@ class ShellRunner:
         *,
         cwd: Path | None = None,
         check: bool = True,
+        env: Mapping[str, str] | None = None,
     ) -> CommandResult:
         completed = subprocess.run(
             list(args),
             cwd=str(cwd) if cwd else None,
             text=True,
             capture_output=True,
+            env=env,
         )
         result = CommandResult(list(args), completed.returncode, completed.stdout or "", completed.stderr or "")
         if check and completed.returncode != 0:

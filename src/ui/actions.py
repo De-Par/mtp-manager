@@ -16,6 +16,7 @@ ACTION_LABEL_KEYS = {
     "source_menu": "source",
     "setup": "setup",
     "edit_settings": "edit_settings",
+    "web_frontend": "web_frontend",
     "show_export": "show_export",
     "clear_activity": "clear_activity",
     "initial_setup": "initial_setup",
@@ -96,6 +97,7 @@ def configure_actions() -> list[ActionSpec]:
     return [
         ActionSpec("setup", "setup"),
         ActionSpec("edit_settings", "edit_settings"),
+        ActionSpec("web_frontend", "web_frontend"),
         ActionSpec("source_menu", "source_menu"),
         ActionSpec("cleanup", "cleanup", "warning"),
         ActionSpec("factory_reset", "factory_reset", "error"),

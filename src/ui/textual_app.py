@@ -72,6 +72,7 @@ from ui.widgets import (
 
 
 class ManagerTextualApp(ModalFlowMixin, App[None]):
+    TITLE = "mtp-manager"
     DASHBOARD_REFRESH_INTERVAL = 3.0
     TOP_SPLIT_HANDLE_WIDTH = SPLIT_HANDLE_WIDTH
     MIN_OVERVIEW_WIDTH = MIN_OVERVIEW_WIDTH
@@ -1015,6 +1016,13 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self._notify_result(result.status_message, severity=result.severity)
             reopen_after_action = self._reopen_screen_after_action
             self._reopen_screen_after_action = None
+            if isinstance(reopen_after_action, tuple) and reopen_after_action[0] == "setup_form":
+                if result.severity == "error":
+                    values = reopen_after_action[1]
+                    self.call_after_refresh(lambda: self._open_setup_screen(values, result.status_message))
+                else:
+                    self.call_after_refresh(lambda: self._open_setup_result(result.output_body))
+                reopen_after_action = None
             if reopen_after_action in {"source_menu", "configure_menu"}:
                 if reopen_after_action == "source_menu":
                     self._open_source_menu()
@@ -1039,6 +1047,10 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self._notify_result(message, severity="error")
             reopen_after_action = self._reopen_screen_after_action
             self._reopen_screen_after_action = None
+            if isinstance(reopen_after_action, tuple) and reopen_after_action[0] == "setup_form":
+                values = reopen_after_action[1]
+                self.call_after_refresh(lambda: self._open_setup_screen(values, message))
+                reopen_after_action = None
             if reopen_after_action in {"source_menu", "configure_menu"}:
                 if reopen_after_action == "source_menu":
                     self._open_source_menu()
@@ -1214,18 +1226,21 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
                     self.controller.load_settings(),
                     title=self._t("edit_settings"),
                     save_label=self._t("save", "Save"),
-                    cancel_label=self._t("cancel", "Cancel"),
-                    mt_port_label=self._t("proxy_port"),
-                    stats_port_label=self._t("api_port"),
-                    workers_label=self._t("workers"),
-                    fake_tls_domain_label=self._t("fake_tls_domain"),
-                    ad_tag_label=self._t("ad_tag"),
+                    **self._settings_dialog_kwargs(),
                 ),
                 self._handle_settings_screen,
             )
             return
         if action == "user_configure":
             self._open_user_configure_menu()
+            return
+        if action == "web_frontend":
+            self._run_action(self.controller.web_frontend_preview, output_title=self._t("web_frontend"))
+            return
+        if action == "web_logs":
+            https = self.controller.https_service
+            self.push_screen(FullscreenTextScreen(self._t("web_logs"),
+                https.logs() if https else self._t("not_installed"), close_label=self._t("close")))
             return
         if action == "user_secrets":
             self._open_user_secrets_screen()
@@ -1240,16 +1255,10 @@ class ManagerTextualApp(ModalFlowMixin, App[None]):
             self._clear_activity()
             return
         if action == "setup":
-            self._run_action(
-                self.controller.run_setup,
-                busy_label=f"{self._t('setup', 'Setup')}...",
-            )
+            self._open_setup_screen()
             return
         if action == "initial_setup":
-            self._run_action(
-                lambda: self.controller.run_setup(source_mode="fresh"),
-                busy_label=f"{self._t('setup', 'Setup')}...",
-            )
+            self._open_setup_screen()
             return
         if action == "update_source":
             self._run_action(

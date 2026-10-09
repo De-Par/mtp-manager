@@ -19,8 +19,8 @@ class SystemdManager:
     def try_restart(self, unit: str) -> None:
         self.shell.run(["systemctl", "try-restart", unit], check=False)
 
-    def enable(self, unit: str) -> None:
-        self.shell.run(["systemctl", "enable", "--now", unit])
+    def enable(self, unit: str, *, start: bool = True) -> None:
+        self.shell.run(["systemctl", "enable", *(["--now"] if start else []), unit])
 
     def disable(self, unit: str) -> None:
         self.shell.run(["systemctl", "disable", "--now", unit], check=False)

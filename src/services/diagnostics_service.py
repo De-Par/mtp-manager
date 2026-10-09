@@ -28,12 +28,21 @@ class DiagnosticsService:
         checks = [
             HealthCheck("public_ip", "public_ip", self.network.detect_public_ip() or "unknown", Severity.INFO),
             HealthCheck("telemt_version", "telemt_version", self.installed_version(), Severity.INFO),
-            HealthCheck("mt_port", "proxy_port", str(settings.mt_port), Severity.INFO),
+            HealthCheck("proxy_mode", "proxy_mode", settings.proxy_mode, Severity.INFO),
             HealthCheck("stats_port", "api_port", str(settings.stats_port), Severity.INFO),
-            HealthCheck("fake_tls", "fake_tls", settings.fake_tls_domain or "disabled", Severity.OK if settings.fake_tls_domain else Severity.WARN),
             HealthCheck("enabled_secrets", "secrets_count", str(self.inventory.enabled_secret_count()), Severity.INFO),
             HealthCheck("service_status", "service_status", self.systemd.state(), Severity.INFO),
         ]
+        if settings.mtproto_enabled:
+            checks.extend([
+                HealthCheck("mt_port", "proxy_port", str(settings.mt_port), Severity.INFO),
+                HealthCheck("fake_tls", "fake_tls", settings.fake_tls_domain or "disabled", Severity.OK if settings.fake_tls_domain else Severity.WARN),
+            ])
+        if settings.web_enabled:
+            checks.extend([
+                HealthCheck("web_endpoint", "web_endpoint", settings.web_endpoint, Severity.INFO),
+                HealthCheck("web_listen", "web_port", f"127.0.0.1:{settings.web_port}", Severity.INFO),
+            ])
         return HealthReport(checks=checks)
 
     def installed_version(self) -> str:

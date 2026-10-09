@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 
 from errors import PlatformError
 from .distro import DistroInfo, DistroProbe
@@ -52,7 +53,8 @@ class PackageManager:
         distro = self.distro_info
         if distro.family == "debian":
             self.shell.run(["apt-get", "update"])
-            self.shell.run(["apt-get", "install", "-y", *packages])
+            self.shell.run(["apt-get", "-o", "Dpkg::Options::=--force-confold", "install", "-y", *packages],
+                           env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"})
             return
         if distro.family == "fedora":
             self.shell.run(["dnf", "install", "-y", *packages])

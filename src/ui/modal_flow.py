@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from dataclasses import replace
+import ipaddress
 
 from errors import AppError
 from ui.lists import secret_list_items
@@ -16,6 +18,8 @@ from ui.modals import (
     InstallRefScreen,
     ServerMenuScreen,
     SourceMenuScreen,
+    SettingsScreen,
+    SetupScreen,
     TextInputScreen,
     UserConfigureMenuScreen,
     UserSecretsScreen,
@@ -45,7 +49,93 @@ class ModalFlowMixin:
         return source_actions()
 
     def _server_actions(self) -> list[ActionSpec]:
-        return server_actions()
+        actions = server_actions()
+        settings = self.controller.load_settings()
+        if settings.web_enabled and settings.web_frontend == "caddy":
+            actions.insert(2, ActionSpec("web_logs", self._t("web_logs")))
+        return actions
+
+    def _settings_dialog_kwargs(self) -> dict[str, object]:
+        return {
+            "cancel_label": self._t("cancel"), "mt_port_label": self._t("proxy_port"),
+            "stats_port_label": self._t("api_port"), "workers_label": self._t("workers"),
+            "fake_tls_domain_label": self._t("fake_tls_domain"), "ad_tag_label": self._t("ad_tag"),
+            "web_labels": {key: self._t(key) for key in (
+                "proxy_mode", "mode_mtproto", "mode_web", "mode_both", "web_help", "web_domain",
+                "web_public_ip", "web_port", "web_base_path", "web_decoy_dir", "advanced_settings",
+                "web_frontend_mode", "web_auto", "web_external", "setup_help", "setup_user", "telemt_ref", "back", "next",
+            )},
+            "submit_validator": self._validate_settings_form,
+        }
+
+    def _validate_settings_form(self, values: dict[str, str]) -> str | None:
+        try:
+            self.controller.settings_from_form(values)
+            if "initial_user" in values and not values["initial_user"]:
+                return self._t("setup_user_required")
+        except AppError as exc:
+            return self.controller.present_error(str(exc))
+        return None
+
+    def _open_setup_screen(self, values: dict[str, str] | None = None, error: str = "") -> None:
+        settings = self.controller.settings_from_form(values) if values else self.controller.load_settings()
+        if not settings.web_public_ip:
+            candidate = self.controller.dashboard().public_ip
+            try:
+                if ipaddress.ip_address(candidate).is_global:
+                    settings = replace(settings, web_public_ip=candidate)
+            except ValueError:
+                pass
+        screen = SetupScreen(
+            settings, initial_user=values.get("initial_user", "default") if values else "default",
+            needs_secret=self.controller.runtime_service.enabled_secret_count() == 0,
+            title=self._t("setup_title"), save_label=self._t("install_start"),
+            **self._settings_dialog_kwargs(),
+        )
+        self.push_screen(screen, self._handle_setup_screen)
+        if error:
+            def show_error() -> None:
+                screen._error_text = error
+                screen.query_one("#form-error").update(error)
+                screen.query_one("#form-error").display = True
+            self.call_after_refresh(show_error)
+
+    def _set_setup_phase(self, key: str) -> None:
+        self._busy_label = self._t(key)
+        self._update_busy_screen()
+
+    def _handle_setup_screen(self, result: dict[str, str] | None) -> None:
+        if result is None:
+            self._open_configure_menu()
+            return
+        settings = self.controller.settings_from_form(result)
+        self._reopen_screen_after_action = ("setup_form", result)
+        self._run_action(
+            lambda: self.controller.setup_from_form(settings, initial_user=result.get("initial_user", "default"),
+                progress=lambda key: self.call_from_thread(self._set_setup_phase, key)),
+            output_title=self._t("setup_ready"), success_message=self._t("setup_ready"),
+            busy_label=self._t("setup_checking"),
+        )
+
+    def _open_setup_result(self, body: str) -> None:
+        def copy_links(action: str) -> bool:
+            if action != "copy_setup_links":
+                return False
+            self._copy_text(body)
+            self.notify(self._t("copied_to_clipboard"), severity="information")
+            return True
+
+        self.push_screen(FullscreenTextScreen(
+            self._t("setup_ready"), body, clear_before_close=True,
+            actions=[ActionSpec("copy_setup_links", self._t("copy"))], action_handler=copy_links,
+            close_label=self._t("close"),
+        ), self._handle_setup_result_closed)
+
+    def _handle_setup_result_closed(self, result: str | None) -> None:
+        self.state.output_body = ""
+        self.state.output_title = ""
+        self.run_worker(self.refresh_ui(), exclusive=True)
+        self.call_after_refresh(self._restore_default_focus)
 
     def _run_cleanup(self) -> str:
         result = self.controller.service_cleanup()
@@ -368,18 +458,19 @@ class ModalFlowMixin:
                 f"{self._t('created_at')}: {self._format_secret_created_at(secret.created_at)}",
             ]
         )
-        credentials = "\n".join(
-            [
-                f"{self._t('raw_secret')}: {secret.raw_secret}",
-                f"DD: {bundle.links.padded_secret}",
-                f"EE: {bundle.links.fake_tls_secret or self._t('none')}",
-            ]
-        )
-        links = [
-            (self._t("raw_secret"), bundle.links.tg_raw, bundle.links.tme_raw),
-            ("DD", bundle.links.tg_padded, bundle.links.tme_padded),
-            ("EE", bundle.links.tg_fake_tls, bundle.links.tme_fake_tls),
-        ]
+        credential_lines = [f"{self._t('raw_secret')}: {secret.raw_secret}", f"DD: {bundle.links.padded_secret}"]
+        links = []
+        if settings.mtproto_enabled:
+            credential_lines.append(f"EE: {bundle.links.fake_tls_secret or self._t('none')}")
+            links.extend([
+                (self._t("raw_secret"), bundle.links.tg_raw, bundle.links.tme_raw),
+                ("DD", bundle.links.tg_padded, bundle.links.tme_padded),
+                ("EE", bundle.links.tg_fake_tls, bundle.links.tme_fake_tls),
+            ])
+        if settings.web_enabled:
+            links.extend([("WEB raw", bundle.links.tg_web_raw, None), ("WEB DD", bundle.links.tg_web_padded, None)])
+            overview += f"\n{self._t('web_endpoint')}: {bundle.web_endpoint}"
+        credentials = "\n".join(credential_lines)
         return overview, credentials, links
 
     def _open_user_secrets_screen(self, *, selected_secret_id: int | None = None) -> None:
@@ -553,25 +644,7 @@ class ModalFlowMixin:
             return
 
         def apply_settings() -> str:
-            try:
-                mt_port = int(result["mt_port"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field").format(field=self._t("proxy_port"))) from exc
-            try:
-                stats_port = int(result["stats_port"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field").format(field=self._t("api_port"))) from exc
-            try:
-                workers = int(result["workers"])
-            except ValueError as exc:
-                raise AppError(self._t("invalid_integer_field").format(field=self._t("workers"))) from exc
-            self.controller.update_settings(
-                mt_port=mt_port,
-                stats_port=stats_port,
-                workers=workers,
-                fake_tls_domain=result["fake_tls_domain"],
-                ad_tag=result["ad_tag"],
-            )
+            self.controller.apply_form_settings(self.controller.settings_from_form(result))
             return self._t("settings_saved_applied", "Settings saved and applied.")
 
         self._run_action(

@@ -8,6 +8,7 @@ from models.settings import AppSettings
 from paths import ProjectPaths
 from services.proxy_runtime_service import ProxyRuntimeService
 from services.systemd_service import SystemdService
+from services.https_service import HttpsService
 
 
 class SettingsService:
@@ -18,12 +19,14 @@ class SettingsService:
         runtime: ProxyRuntimeService | None = None,
         systemd: SystemdService | None = None,
         firewall: FirewallManager | None = None,
+        https: HttpsService | None = None,
     ) -> None:
         self.storage = storage
         self.paths = paths
         self.runtime = runtime
         self.systemd = systemd
         self.firewall = firewall
+        self.https = https
 
     def load(self) -> AppSettings:
         payload = self.storage.load_json(self.paths.settings_file, default={})
@@ -40,11 +43,24 @@ class SettingsService:
         current = self.load()
         updated = replace(current, **changes)
         updated.validate()
+        if apply_runtime and self.runtime:
+            self.runtime.validate_settings(updated)
+        frontend_changed = any(getattr(updated, key) != getattr(current, key) for key in (
+            "proxy_mode", "web_frontend", "web_domain", "web_public_ip", "web_port", "web_base_path",
+        ))
+        if apply_runtime and self.https and self.https.is_installed() and frontend_changed:
+            self.https.validate_dns(updated)
+            if not updated.web_enabled or updated.web_frontend != "caddy":
+                self.https.deactivate()
         self.save(updated)
-        if self.firewall and updated.mt_port != current.mt_port:
+        if apply_runtime and self.firewall and updated.public_ports != current.public_ports:
             self.firewall.allow_tcp(22)
-            self.firewall.allow_tcp(updated.mt_port)
-            self.firewall.delete_allow_tcp(current.mt_port)
+            for port in sorted(updated.public_ports - current.public_ports):
+                self.firewall.allow_tcp(port)
+            for port in sorted(current.public_ports - updated.public_ports - {22}):
+                self.firewall.delete_allow_tcp(port)
         if apply_runtime and self.runtime and self.systemd:
             self.runtime.reconcile(updated, self.systemd, restart=True)
+        if apply_runtime and self.https and self.https.is_installed() and frontend_changed:
+            self.https.activate(updated)
         return updated

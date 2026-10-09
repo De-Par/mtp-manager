@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import ipaddress
 import urllib.request
 
 
@@ -18,7 +19,7 @@ class PublicIpResolver:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 sock.connect(("8.8.8.8", 80))
                 detected = sock.getsockname()[0].strip()
-                if detected:
+                if detected and ipaddress.ip_address(detected).is_global:
                     self._cached_ip = detected
                     self._resolved = True
                     return detected

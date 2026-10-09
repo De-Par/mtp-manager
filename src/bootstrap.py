@@ -22,6 +22,7 @@ from services import (
 )
 from ui.backend import UIBackend
 from ui.textual_app import TextualUI
+from services.https_service import HttpsService
 
 
 @dataclass(slots=True)
@@ -90,7 +91,8 @@ def build_container() -> AppContainer:
     systemd_service = SystemdService(systemd_manager, storage, paths)
     network_service = NetworkService(PublicIpResolver())
     runtime_service = ProxyRuntimeService(storage, inventory_service, paths)
-    settings_service = SettingsService(storage, paths, runtime=runtime_service, systemd=systemd_service, firewall=firewall)
+    https_service = HttpsService(shell, systemd_manager, storage, paths)
+    settings_service = SettingsService(storage, paths, runtime=runtime_service, systemd=systemd_service, firewall=firewall, https=https_service)
     translator = Translator(settings_service.load().ui_lang)
     diagnostics_service = DiagnosticsService(network_service, inventory_service, systemd_service, shell, paths)
     export_service = ExportService()
@@ -104,6 +106,7 @@ def build_container() -> AppContainer:
         runtime=runtime_service,
         systemd=systemd_service,
         firewall=firewall,
+        https=https_service,
     )
     cleanup_service = CleanupService(systemd_manager, storage, paths, packages)
     controller = AppController(
@@ -117,6 +120,7 @@ def build_container() -> AppContainer:
         runtime_service=runtime_service,
         systemd_service=systemd_service,
         paths=paths,
+        https_service=https_service,
     )
     ui = TextualUI()
     return AppContainer(
